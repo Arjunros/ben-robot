@@ -1,0 +1,464 @@
+cat > ~/pi_assistant/templates/index.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Pi Assistant</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 1rem; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 12px; }
+  h1 { font-size: 20px; font-weight: 500; }
+  .pill { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 12px; border-radius: 99px; border: 1px solid #ddd; color: #666; background: #fff; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; }
+  .dot.ok { background: #3B6D11; }
+  .dot.err { background: #A32D2D; }
+  .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: #fff; border-radius: 10px; padding: 1rem; border: 1px solid #eee; }
+  .metric-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 500; }
+  .card { background: #fff; border: 1px solid #eee; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 15px; font-weight: 500; margin-bottom: 1rem; }
+  .section-title { font-size: 13px; font-weight: 500; color: #444; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #f0f0f0; margin-top: 12px; }
+  .section-title:first-child { margin-top: 0; }
+  input, textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 8px; font-family: inherit; }
+  input[type=file] { padding: 6px; background: #fafafa; }
+  input[type=range] { padding: 0; border: none; background: none; margin-bottom: 0; }
+  button { padding: 8px 16px; border: 1px solid #ddd; border-radius: 8px; background: #fff; font-size: 14px; cursor: pointer; font-family: inherit; transition: background 0.15s; }
+  button:hover { background: #f5f5f5; }
+  .btn-primary { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .btn-primary:hover { background: #333; }
+  .btn-danger { background: #fff; color: #A32D2D; border-color: #A32D2D; }
+  .row { display: flex; gap: 8px; }
+  .row input { margin-bottom: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .pair-block { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; }
+  .pair-block:last-child { border-bottom: none; margin-bottom: 0; }
+  .qa-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 10px; background: #f9f9f9; border-radius: 8px; margin-bottom: 8px; }
+  .qa-item:last-child { margin-bottom: 0; }
+  .qa-q { font-size: 13px; font-weight: 500; }
+  .qa-a { font-size: 13px; color: #666; margin-top: 2px; }
+  .qa-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .qa-btns button { font-size: 12px; padding: 3px 10px; }
+  .face-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; background: #f9f9f9; border-radius: 8px; margin-bottom: 8px; }
+  .face-item:last-child { margin-bottom: 0; }
+  .face-avatar { width: 40px; height: 40px; border-radius: 50%; background: #e8e8e8; display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .face-info { flex: 1; }
+  .face-name { font-size: 13px; font-weight: 500; }
+  .face-greeting { font-size: 12px; color: #666; margin-top: 2px; }
+  .face-btns button { font-size: 12px; padding: 3px 10px; }
+  .log { background: #f9f9f9; border-radius: 8px; padding: 10px; font-size: 12px; font-family: monospace; max-height: 150px; overflow-y: auto; }
+  .log-ok { color: #3B6D11; }
+  .log-err { color: #A32D2D; }
+  .empty { text-align: center; color: #aaa; font-size: 13px; padding: 1.5rem 0; }
+  .wake-badge { display: inline-block; background: #f0f0f0; border-radius: 6px; padding: 3px 10px; font-size: 12px; font-family: monospace; margin-left: 6px; color: #333; }
+  .preview-img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; margin-top: 6px; display: none; }
+  .btn-group { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .btn-group button { flex: 1; min-width: 80px; }
+  .speed-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .speed-row input { flex: 1; margin-bottom: 0; }
+  .voice-preview { font-size: 12px; color: #888; margin-top: 6px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Pi Assistant</h1>
+  <div class="pill"><div class="dot" id="dot"></div><span id="status">Not connected</span></div>
+</div>
+
+<div class="metrics">
+  <div class="metric"><div class="metric-label">Q&As stored</div><div class="metric-value" id="m-count">—</div></div>
+  <div class="metric"><div class="metric-label">Faces stored</div><div class="metric-value" id="m-faces">—</div></div>
+  <div class="metric"><div class="metric-label">Last action</div><div class="metric-value" style="font-size:13px;margin-top:6px;" id="m-last">—</div></div>
+</div>
+
+<!-- Connection -->
+<div class="card">
+  <h2>Connection</h2>
+  <div class="row">
+    <input type="text" id="ip" placeholder="10.42.0.1"/>
+    <button onclick="connect()">Connect</button>
+    <button onclick="ping()">Ping</button>
+  </div>
+</div>
+
+<!-- Wake Words -->
+<div class="card">
+  <h2>Wake Words</h2>
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:#f9f9f9;border-radius:8px;">
+      <span style="font-size:13px;">Q&amp;A mode</span>
+      <span class="wake-badge">hey pi</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:#f9f9f9;border-radius:8px;">
+      <span style="font-size:13px;">Face detection</span>
+      <span class="wake-badge">hi</span>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="card">
+  <h2>Settings</h2>
+
+  <div class="section-title">Language</div>
+  <div class="btn-group">
+    <button id="btn-en" onclick="setLang('en')" class="btn-primary">English</button>
+    <button id="btn-ta" onclick="setLang('ta')">தமிழ்</button>
+  </div>
+
+  <div class="section-title">Voice</div>
+  <div class="btn-group">
+    <button id="btn-v-female" onclick="setVoice('female')">Female (Amy)</button>
+    <button id="btn-v-male"   onclick="setVoice('male')">Male (Ryan)</button>
+    <button id="btn-v-child"  onclick="setVoice('child')">Child</button>
+  </div>
+  <div class="voice-preview" id="voice-preview">Current: Female (Amy)</div>
+
+  <div class="section-title">Speed</div>
+  <div class="speed-row">
+    <span style="font-size:12px;color:#888;">Slow</span>
+    <input type="range" min="80" max="300" value="150" id="speedSlider"
+      oninput="document.getElementById('speedVal').textContent=this.value"
+      onchange="setSpeed(this.value)"/>
+    <span style="font-size:12px;color:#888;">Fast</span>
+    <span id="speedVal" style="font-size:13px;font-weight:500;min-width:30px;">150</span>
+  </div>
+
+  <button onclick="testVoice()" style="width:100%;">Test Voice</button>
+</div>
+
+<!-- Q&A -->
+<div class="card">
+  <h2>Q&amp;A <span style="font-size:12px;color:#888;font-weight:400;">wake word: hey pi</span></h2>
+
+  <div class="section-title">Add / update pairs</div>
+  <div id="pairs"></div>
+  <div style="display:flex;gap:8px;margin-top:8px;">
+    <button onclick="addPair()">+ Add pair</button>
+    <button class="btn-primary" onclick="sendAll()" style="margin-left:auto;">Send to Pi</button>
+  </div>
+
+  <div class="section-title">Stored Q&As <button style="float:right;font-size:12px;font-weight:400;" onclick="fetchAll()">Refresh</button></div>
+  <div id="qa-list"><div class="empty">Connect to Pi and refresh</div></div>
+</div>
+
+<!-- Face Recognition -->
+<div class="card">
+  <h2>Face Recognition <span style="font-size:12px;color:#888;font-weight:400;">wake word: hi</span></h2>
+
+  <div class="section-title">Register new face</div>
+  <input type="text" id="faceName" placeholder="Person's name (e.g. Arjun)"/>
+  <input type="text" id="faceGreeting" placeholder="Greeting (e.g. Welcome to Technovation!)"/>
+  <input type="file" id="faceImage" accept="image/*" capture="user" onchange="previewImage(this)"/>
+  <img id="facePreview" class="preview-img"/>
+  <button class="btn-primary" onclick="registerFace()" style="width:100%;margin-top:6px;">Register Face</button>
+
+  <div class="section-title">Registered faces <button style="float:right;font-size:12px;font-weight:400;" onclick="loadFaces()">Refresh</button></div>
+  <div id="face-list"><div class="empty">No faces registered yet</div></div>
+</div>
+
+<!-- Activity Log -->
+<div class="card">
+  <h2>Activity log</h2>
+  <div class="log" id="log">Waiting for connection...</div>
+</div>
+
+<script>
+let ip = localStorage.getItem('pi_ip') || '10.42.0.1';
+let pairData = [];
+document.getElementById('ip').value = ip;
+addPair(); addPair();
+
+const VOICE_LABELS = {
+  female: 'Female (Amy)',
+  male:   'Male (Ryan)',
+  child:  'Child'
+};
+
+function addLog(msg, type='') {
+  const el = document.getElementById('log');
+  el.innerHTML += `<div class="${type ? 'log-'+type : ''}">${new Date().toLocaleTimeString()}  ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function setStatus(ok, text) {
+  document.getElementById('dot').className = 'dot ' + (ok ? 'ok' : 'err');
+  document.getElementById('status').textContent = text;
+}
+
+function setLast(t) { document.getElementById('m-last').textContent = t; }
+
+// ── PAIRS ─────────────────────────────────────────────────
+function addPair(q='', a='') {
+  const i = pairData.length;
+  pairData.push({q, a});
+  const c = document.getElementById('pairs');
+  const d = document.createElement('div');
+  d.className = 'pair-block';
+  d.innerHTML = `
+    <div style="font-size:12px;color:#888;margin-bottom:6px;">Pair ${i+1}</div>
+    <div class="grid2">
+      <div><div class="label">Question</div><input placeholder="what is your name" value="${q}" oninput="pairData[${i}].q=this.value"/></div>
+      <div><div class="label">Answer</div><input placeholder="I am Pi Assistant" value="${a}" oninput="pairData[${i}].a=this.value"/></div>
+    </div>`;
+  c.appendChild(d);
+}
+
+// ── CONNECTION ────────────────────────────────────────────
+async function connect() {
+  ip = document.getElementById('ip').value.trim();
+  if (!ip) return alert('Enter Pi IP');
+  localStorage.setItem('pi_ip', ip);
+  setStatus(false, 'Connecting...');
+  addLog('Connecting to ' + ip + '...');
+  try {
+    const r = await fetch(`http://${ip}:5000/ping`);
+    const d = await r.json();
+    setStatus(true, 'Connected to ' + ip);
+    addLog('Connected — ' + d.message, 'ok');
+    setLast('Connected');
+    fetchAll();
+    loadFaces();
+    loadSettings();
+  } catch(e) {
+    setStatus(false, 'Failed');
+    addLog('Error: ' + e.message, 'err');
+  }
+}
+
+async function ping() {
+  try {
+    await fetch(`http://${ip}:5000/ping`);
+    addLog('Ping OK', 'ok');
+    setLast('Ping OK');
+  } catch(e) { addLog('Ping failed', 'err'); }
+}
+
+// ── Q&A ───────────────────────────────────────────────────
+async function sendAll() {
+  const valid = pairData.filter(p => p.q.trim() && p.a.trim());
+  if (!valid.length) return addLog('Fill at least one pair', 'err');
+  try {
+    const r = await fetch(`http://${ip}:5000/qa/add`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(valid.map(p => ({
+        question: p.q.trim().toLowerCase(),
+        answer: p.a.trim()
+      })))
+    });
+    const d = await r.json();
+    addLog('Sent ' + valid.length + ' pair(s)', 'ok');
+    setLast('Sent ' + valid.length + ' Q&As');
+    fetchAll();
+  } catch(e) { addLog('Send failed: ' + e.message, 'err'); }
+}
+
+async function fetchAll() {
+  try {
+    const r = await fetch(`http://${ip}:5000/qa/list`);
+    const d = await r.json();
+    const entries = Object.entries(d);
+    document.getElementById('m-count').textContent = entries.length;
+    const list = document.getElementById('qa-list');
+    if (!entries.length) {
+      list.innerHTML = '<div class="empty">No Q&As yet</div>';
+      return;
+    }
+    list.innerHTML = '';
+    entries.forEach(([q, a]) => {
+      const el = document.createElement('div');
+      el.className = 'qa-item';
+      el.innerHTML = `
+        <div style="flex:1;">
+          <div class="qa-q">${q}</div>
+          <div class="qa-a">${a}</div>
+        </div>
+        <div class="qa-btns">
+          <button onclick="editQA('${q.replace(/'/g,"\\'")}','${a.replace(/'/g,"\\'")}')">Edit</button>
+          <button onclick="deleteQA('${q.replace(/'/g,"\\'")}')">Delete</button>
+        </div>`;
+      list.appendChild(el);
+    });
+    addLog('Loaded ' + entries.length + ' Q&A(s)', 'ok');
+  } catch(e) { addLog('Fetch failed: ' + e.message, 'err'); }
+}
+
+function editQA(q, a) {
+  document.getElementById('pairs').innerHTML = '';
+  pairData = [];
+  addPair(q, a);
+  addLog('Editing: ' + q);
+  window.scrollTo(0, 0);
+}
+
+async function deleteQA(q) {
+  if (!confirm('Delete: "' + q + '"?')) return;
+  try {
+    await fetch(`http://${ip}:5000/qa/delete`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({question: q})
+    });
+    addLog('Deleted: ' + q, 'ok');
+    setLast('Deleted Q&A');
+    fetchAll();
+  } catch(e) { addLog('Delete failed', 'err'); }
+}
+
+// ── FACE ──────────────────────────────────────────────────
+function previewImage(input) {
+  const preview = document.getElementById('facePreview');
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+async function registerFace() {
+  const name     = document.getElementById('faceName').value.trim();
+  const greeting = document.getElementById('faceGreeting').value.trim();
+  const file     = document.getElementById('faceImage').files[0];
+  if (!name || !greeting || !file) {
+    return addLog('Fill name, greeting and select image', 'err');
+  }
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('greeting', greeting);
+  formData.append('image', file);
+  try {
+    const r = await fetch(`http://${ip}:5000/face/add`, {method: 'POST', body: formData});
+    const d = await r.json();
+    addLog(d.message, d.status === 'ok' ? 'ok' : 'err');
+    setLast('Face registered');
+    if (d.status === 'ok') {
+      document.getElementById('faceName').value = '';
+      document.getElementById('faceGreeting').value = '';
+      document.getElementById('faceImage').value = '';
+      document.getElementById('facePreview').style.display = 'none';
+      loadFaces();
+    }
+  } catch(e) { addLog('Register failed: ' + e.message, 'err'); }
+}
+
+async function loadFaces() {
+  try {
+    const r = await fetch(`http://${ip}:5000/face/list`);
+    const faces = await r.json();
+    document.getElementById('m-faces').textContent = faces.length;
+    const list = document.getElementById('face-list');
+    if (!faces.length) {
+      list.innerHTML = '<div class="empty">No faces registered yet</div>';
+      return;
+    }
+    list.innerHTML = '';
+    faces.forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'face-item';
+      el.innerHTML = `
+        <div class="face-avatar">👤</div>
+        <div class="face-info">
+          <div class="face-name">${f.name}</div>
+          <div class="face-greeting">${f.greeting}</div>
+        </div>
+        <div class="face-btns">
+          <button class="btn-danger" onclick="deleteFace('${f.name}')">Delete</button>
+        </div>`;
+      list.appendChild(el);
+    });
+    addLog('Loaded ' + faces.length + ' face(s)', 'ok');
+  } catch(e) { addLog('Load faces failed: ' + e.message, 'err'); }
+}
+
+async function deleteFace(name) {
+  if (!confirm('Delete face: ' + name + '?')) return;
+  try {
+    const r = await fetch(`http://${ip}:5000/face/delete`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name})
+    });
+    const d = await r.json();
+    addLog(d.message, d.status === 'ok' ? 'ok' : 'err');
+    setLast('Face deleted');
+    loadFaces();
+  } catch(e) { addLog('Delete failed: ' + e.message, 'err'); }
+}
+
+// ── SETTINGS ──────────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const r = await fetch(`http://${ip}:5000/settings`);
+    const s = await r.json();
+    document.getElementById('speedSlider').value = s.speed || 150;
+    document.getElementById('speedVal').textContent = s.speed || 150;
+    highlightLang(s.language || 'en');
+    highlightVoice(s.voice || 'female');
+  } catch(e) { addLog('Load settings failed', 'err'); }
+}
+
+function highlightLang(lang) {
+  document.getElementById('btn-en').className = lang === 'en' ? 'btn-primary' : '';
+  document.getElementById('btn-ta').className = lang === 'ta' ? 'btn-primary' : '';
+}
+
+function highlightVoice(voice) {
+  ['female','male','child'].forEach(v => {
+    const el = document.getElementById('btn-v-' + v);
+    if (el) el.className = '';
+  });
+  const el = document.getElementById('btn-v-' + voice);
+  if (el) el.className = 'btn-primary';
+  document.getElementById('voice-preview').textContent =
+    'Current: ' + (VOICE_LABELS[voice] || voice);
+}
+
+async function setLang(lang) {
+  await updateSettings({language: lang});
+  highlightLang(lang);
+  addLog('Language: ' + (lang === 'ta' ? 'Tamil' : 'English'), 'ok');
+  setLast('Language changed');
+}
+
+async function setVoice(voice) {
+  await updateSettings({voice: voice});
+  highlightVoice(voice);
+  addLog('Voice: ' + (VOICE_LABELS[voice] || voice), 'ok');
+  setLast('Voice changed');
+}
+
+async function setSpeed(speed) {
+  await updateSettings({speed: speed});
+  addLog('Speed: ' + speed, 'ok');
+  setLast('Speed changed');
+}
+
+async function updateSettings(data) {
+  try {
+    await fetch(`http://${ip}:5000/settings`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+  } catch(e) { addLog('Settings save failed', 'err'); }
+}
+
+async function testVoice() {
+  try {
+    await fetch(`http://${ip}:5000/qa/test-voice`, {method: 'POST'});
+    addLog('Testing voice — listen to speaker', 'ok');
+    setLast('Voice test');
+  } catch(e) { addLog('Test failed: ' + e.message, 'err'); }
+}
+</script>
+</body>
+</html>
+HTMLEOF

@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+faces/
+qa_store.json
+settings.json
+poses.json
+ai_config.json
+*.wav
+*.log
+.env

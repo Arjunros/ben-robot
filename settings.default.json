@@ -1,0 +1,7 @@
+{
+  "robot_name": "Nova",
+  "welcome_speech": "Hello, I am Nova, your robot assistant",
+  "language": "en",
+  "voice": "female",
+  "chatgpt_enabled": true
+}
