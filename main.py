@@ -1,11 +1,12 @@
-import time, os, threading, struct
+import time, os, threading, struct, subprocess
 from faster_whisper import WhisperModel
 from server import start_server, send_to_esp32
 from audio_utils import record_audio, record_question, speak
-from qa_store import find_answer
+from qa_store import find_answer, save_qa
 
 model = WhisperModel("base", device="cpu", compute_type="int8")
 
+# ── Joystick config ────────────────────────────────────────
 JOYSTICK_DEV = "/dev/input/js0"
 DEADZONE     = 5000
 EVENT_SIZE   = 8
@@ -16,6 +17,45 @@ joy_buttons  = [0] * 15
 joy_dir      = "stop"
 joy_speed    = 70
 
+# ── Factory defaults ───────────────────────────────────────
+FACTORY_ROBOT_NAME = "Lisa"
+FACTORY_WIFI_SSID  = "LisaRobot"
+FACTORY_WIFI_PASS  = "lisa1234"
+FACTORY_IP         = "192.168.4.1"
+
+# ── Wake word variants ─────────────────────────────────────
+# All phonetic variations Whisper might transcribe "Lisa" as
+WAKE_WORDS = [
+    "lisa",
+    "leasa",
+    "leeza",
+    "lissa",
+    "lesa",
+    "lysa",
+    "liza",
+    "lieza",
+    "leisa",
+    "lisar",
+    "lisaa",
+    "hey lisa",
+    "hi lisa",
+    "ok lisa",
+    "okay lisa",
+    "lisa please",
+    "please lisa",
+    "dear lisa",
+    "elisa",
+    "alisa",
+]
+
+def is_wake_word(text: str) -> bool:
+    text = text.lower().strip()
+    for w in WAKE_WORDS:
+        if w in text:
+            return True
+    return False
+
+# ── Eye helper ─────────────────────────────────────────────
 def set_eye(state):
     try:
         from eyes import set_state
@@ -23,6 +63,7 @@ def set_eye(state):
     except:
         pass
 
+# ── Transcribe ─────────────────────────────────────────────
 def transcribe(wav_path: str) -> str:
     if not wav_path or not os.path.exists(wav_path):
         return ""
@@ -42,27 +83,22 @@ def transcribe(wav_path: str) -> str:
         print(f"[STT] Error: {e}")
         return ""
 
+# ── Q&A mode ───────────────────────────────────────────────
 def qa_mode():
-    from settings import load_settings
     from ai_fallback import ask_gpt
-
     print("[MODE] Q&A mode activated")
     set_eye("wake")
-    speak("How can I help?")
-
+    speak("Yes?")
     set_eye("listening")
     wav_q = record_question()
     question = transcribe(wav_q)
     print(f"[QUESTION] {question!r}")
-
     if not question:
         set_eye("speaking")
         speak("I did not catch that.")
         set_eye("idle")
         return
-
     answer = find_answer(question)
-
     if answer:
         print("[QA] Found in local store")
         set_eye("speaking")
@@ -71,14 +107,12 @@ def qa_mode():
         print("[QA] Not found locally - asking GPT...")
         set_eye("thinking")
         speak("Let me think about that.")
-        s = load_settings()
-        lang = s.get("language", "en")
-        answer = ask_gpt(question, language=lang)
+        answer = ask_gpt(question, language="en")
         set_eye("speaking")
         speak(answer)
-
     set_eye("idle")
 
+# ── Shutdown ───────────────────────────────────────────────
 def do_shutdown():
     print("[SHUTDOWN] Starting safe shutdown")
     try:
@@ -100,14 +134,93 @@ def do_shutdown():
         print(f"[SHUTDOWN] Home error: {e}")
     try:
         send_to_esp32("LATCH:OFF")
-        print("[SHUTDOWN] LATCH:OFF sent ESP32 cuts power in 15s")
+        print("[SHUTDOWN] LATCH:OFF sent — ESP32 cuts power in 15s")
         time.sleep(1)
     except Exception as e:
         print(f"[SHUTDOWN] Latch error: {e}")
     print("[SHUTDOWN] Executing poweroff")
-    import subprocess
     subprocess.run(["sudo", "/sbin/shutdown", "-h", "now"])
 
+# ── Factory Reset ──────────────────────────────────────────
+def do_factory_reset():
+    print("[FACTORY] Resetting to factory defaults...")
+    set_eye("thinking")
+    try:
+        speak("Resetting to factory settings. Please wait.")
+    except: pass
+
+    # Reset settings.json
+    from settings import save_settings
+    save_settings({
+        "robot_name":      FACTORY_ROBOT_NAME,
+        "welcome_speech":  f"Hello, I am {FACTORY_ROBOT_NAME}, your robot assistant",
+        "language":        "en",
+        "voice":           "female",
+        "chatgpt_enabled": True
+    })
+    print("[FACTORY] settings.json reset")
+
+    # Clear qa_store.json
+    save_qa({})
+    print("[FACTORY] qa_store.json cleared")
+
+    # Delete ALL saved wifi connections then create fresh one
+    try:
+        result = subprocess.run(
+            ['sudo', 'nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'],
+            capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            if ':wifi' in line:
+                conn_name = line.split(':')[0]
+                print(f"[FACTORY] Deleting wifi connection: {conn_name}")
+                subprocess.run(
+                    ['sudo', 'nmcli', 'connection', 'delete', conn_name],
+                    capture_output=True
+                )
+
+        # Create fresh hotspot with fixed IP
+        subprocess.run([
+            'sudo', 'nmcli', 'connection', 'add',
+            'type', 'wifi',
+            'ifname', 'wlan0',
+            'con-name', FACTORY_WIFI_SSID,
+            'autoconnect', 'yes',
+            'ssid', FACTORY_WIFI_SSID,
+            '802-11-wireless.mode', 'ap',
+            '802-11-wireless.band', 'bg',
+            'ipv4.method', 'shared',
+            'ipv4.addresses', f'{FACTORY_IP}/24',
+            'wifi-sec.key-mgmt', 'wpa-psk',
+            'wifi-sec.psk', FACTORY_WIFI_PASS
+        ], capture_output=True)
+
+        # Set highest autoconnect priority
+        subprocess.run([
+            'sudo', 'nmcli', 'connection', 'modify',
+            FACTORY_WIFI_SSID,
+            'connection.autoconnect-priority', '100'
+        ], capture_output=True)
+
+        # Bring it up
+        subprocess.run(
+            ['sudo', 'nmcli', 'connection', 'up', FACTORY_WIFI_SSID],
+            capture_output=True
+        )
+        print(f"[FACTORY] WiFi → '{FACTORY_WIFI_SSID}' / '{FACTORY_WIFI_PASS}' @ {FACTORY_IP}")
+    except Exception as e:
+        print(f"[FACTORY] WiFi reset error: {e}")
+
+    set_eye("idle")
+    try:
+        speak(f"Factory reset complete. Connect to WiFi {FACTORY_WIFI_SSID} with password {FACTORY_WIFI_PASS}.")
+    except: pass
+
+    print("[FACTORY] Done — restarting service")
+    time.sleep(3)
+    subprocess.run(['sudo', 'systemctl', 'restart', 'piassistant'])
+
+# ── Joystick ───────────────────────────────────────────────
 def get_direction():
     y = joy_axis[1]
     x = joy_axis[2]
@@ -229,7 +342,7 @@ def joystick_loop():
                         set_eye("idle")
 
             js.close()
-            print("[JOY] Joystick disconnected retrying in 3s...")
+            print("[JOY] Joystick disconnected — retrying in 3s...")
 
         except FileNotFoundError:
             pass
@@ -237,36 +350,25 @@ def joystick_loop():
             print(f"[JOY] Error: {e}")
         time.sleep(3)
 
+# ── Voice listening loop ───────────────────────────────────
 def listening_loop():
-    from settings import load_settings
-
-    s = load_settings()
-    welcome = s.get("welcome_speech", "System ready")
-    robot_name = s.get("robot_name", "Pi Assistant")
-    wake_word = robot_name.lower().strip()
-
-    print(f"[MAIN] {robot_name} ready. Wake word: {wake_word!r}")
-
+    print("[MAIN] Lisa ready. Listening for wake word...")
     set_eye("speaking")
-    speak(welcome if welcome else "System ready")
+    speak("Hello, I am Lisa, your robot assistant.")
     set_eye("idle")
 
     while True:
-        s = load_settings()
-        robot_name = s.get("robot_name", "Pi Assistant")
-        wake_word = robot_name.lower().strip()
-
-        wav = record_audio(duration=3)
+        wav  = record_audio(duration=3)
         text = transcribe(wav)
-
         print(f"[STT] Heard: {text!r}")
 
-        if wake_word and wake_word in text:
-            print(f"[MAIN] Wake word {wake_word!r} detected!")
+        if is_wake_word(text):
+            print(f"[MAIN] Wake word detected in: {text!r}")
             qa_mode()
 
         time.sleep(0.1)
 
+# ── Entry point ────────────────────────────────────────────
 if __name__ == "__main__":
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
