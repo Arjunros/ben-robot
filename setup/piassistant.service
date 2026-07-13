@@ -1,12 +1,12 @@
 [Unit]
-Description=Nova Pi Assistant
+Description=Ben Pi Assistant
 After=network.target
 
 [Service]
 User=root
-WorkingDirectory=/home/nova/pi_assistant
+WorkingDirectory=/home/ben/pi_assistant
 ExecStartPre=/bin/sleep 10
-ExecStart=/home/nova/pi_assistant/venv/bin/python3 /home/nova/pi_assistant/main.py
+ExecStart=/home/ben/pi_assistant/venv/bin/python3 /home/ben/pi_assistant/main.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

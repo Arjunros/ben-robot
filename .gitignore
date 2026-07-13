@@ -10,3 +10,14 @@ ai_config.json
 *.wav
 *.log
 .env
+pose_store.json
+qa_pairs.json
+qa_pairs.txt
+vision_data.json
+vision_data.txt
+uploaded_faces/
+videos/
+faces_db.pkl
+settings.json
+ai_config.json
+shutdown.wav
