@@ -124,7 +124,7 @@ def face_mode():
             except Exception as e:
                 print(f"[FACE] card failed: {e}")
             set_eye("speaking")
-            speak(f"Hello {name}, {greeting}")
+            speak(greeting)
         else:
             set_eye("speaking")
             speak("Sorry, I do not recognize you")
@@ -363,9 +363,27 @@ def listening_loop():
             print("[MAIN] Face mode trigger!")
             face_mode()
         time.sleep(0.1)
+def battery_watcher():
+    import time
+    warned_low = warned_crit = False
+    while True:
+        time.sleep(30)
+        try:
+            from server import robot_state
+            pct = robot_state.get('battery', 100)
+            if pct <= 10 and not warned_crit:
+                speak("Critical battery. Please charge me now.")
+                warned_crit = True
+            elif pct <= 20 and not warned_low:
+                speak("My battery is low. Please charge me soon.")
+                warned_low = True
+            elif pct > 25:
+                warned_low = warned_crit = False   # reset after charging
+        except: pass
 
 # ── Entry point ────────────────────────────────────────────
 if __name__ == "__main__":
+    threading.Thread(target=battery_watcher, daemon=True).start()
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
     print("[HTTP] Server started on port 5000")

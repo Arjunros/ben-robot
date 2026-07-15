@@ -1,18 +1,26 @@
 import cv2
 import numpy as np
 import os
+import json
 import pickle
+import time
 from insightface.app import FaceAnalysis
 
-FACES_DIR = "faces"
-FACES_DB = "faces/faces_db.pkl"
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+FACES_DIR   = f"{BASE_DIR}/uploaded_faces"      # app saves face_<id>.jpg here
+VISION_JSON = f"{BASE_DIR}/vision_data.json"    # [{id, face(b64), speech}]
+FACES_DB    = f"{BASE_DIR}/faces_db.pkl"        # embeddings cache
+
 os.makedirs(FACES_DIR, exist_ok=True)
 
-# Load InsightFace model
 app = None
+_last_sync_mtime = 0
+
+def _biggest(faces):
+    """InsightFace does not sort — pick the largest face in frame"""
+    return max(faces, key=lambda f: (f.bbox[2]-f.bbox[0]) * (f.bbox[3]-f.bbox[1]))
 
 def init_face_model():
-    """Initialize InsightFace model (call once at startup)"""
     global app
     if app is None:
         print("[FACE] Loading InsightFace model...")
@@ -21,102 +29,110 @@ def init_face_model():
         print("[FACE] Model loaded successfully")
 
 def load_db():
-    """Load face database from pickle file"""
     if os.path.exists(FACES_DB):
-        with open(FACES_DB, "rb") as f:
-            return pickle.load(f)
+        try:
+            with open(FACES_DB, "rb") as f:
+                return pickle.load(f)
+        except: pass
     return {}
 
 def save_db(db):
-    """Save face database to pickle file"""
     with open(FACES_DB, "wb") as f:
         pickle.dump(db, f)
 
-def register_face(name: str, greeting: str, image_path: str) -> bool:
-    """
-    Register a face with name and greeting message
-    Returns True if successful, False otherwise
-    """
-    global app
+def _find_face_image(fid):
+    """App may save .jpg/.png/.webp depending on the upload"""
+    for ext in ('.jpg', '.jpeg', '.png', '.webp'):
+        p = os.path.join(FACES_DIR, f"face_{fid}{ext}")
+        if os.path.exists(p):
+            return p
+    return None
+
+def sync_from_vision_data(force=False):
+    """Rebuild embeddings from vision_data.json + uploaded_faces/
+    Only runs when the app has uploaded something new (mtime check)."""
+    global _last_sync_mtime, app
+    if not os.path.exists(VISION_JSON):
+        return
+    mtime = os.path.getmtime(VISION_JSON)
+    if not force and mtime <= _last_sync_mtime:
+        return
+    _last_sync_mtime = mtime
+
     if app is None:
         init_face_model()
-   
-    # Read image
-    img = cv2.imread(image_path)
-    if img is None:
-        print(f"[FACE] Cannot read image: {image_path}")
-        return False
-   
-    # Detect faces
-    faces = app.get(img)
-    if not faces:
-        print("[FACE] No face found in image")
-        return False
-   
-    # Extract embedding from first detected face
-    embedding = faces[0].embedding
-   
-    # Load database and add new face
-    db = load_db()
-    db[name] = {"embedding": embedding.tolist(), "greeting": greeting}
+    try:
+        with open(VISION_JSON) as f:
+            data = json.load(f)
+    except Exception as e:
+        print(f"[FACE] vision_data.json read error: {e}")
+        return
+
+    db = {}
+    count = 0
+    for item in data:
+        fid    = item.get('id')
+        speech = item.get('speech', '')
+        if fid is None or not speech:      # skip empty delete-markers
+            continue
+        img_path = _find_face_image(fid)
+        if not img_path:
+            print(f"[FACE] No image file for id {fid} — skipped")
+            continue
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"[FACE] Cannot read {img_path}")
+            continue
+        faces = app.get(img)
+        if not faces:
+            print(f"[FACE] No face detected in {os.path.basename(img_path)} — skipped")
+            continue
+        best = _biggest(faces)
+        print(f"[FACE] id {fid}: {len(faces)} face(s), using largest "
+              f"({int(best.bbox[2]-best.bbox[0])}px)")
+        db[str(fid)] = {"embedding": best.embedding.tolist(),
+                        "greeting": speech}
+        count += 1
+
     save_db(db)
-   
-    print(f"[FACE] Registered: {name} with greeting: '{greeting}'")
-    return True
+    print(f"[FACE] Synced {count} faces from app storage")
 
 def recognize_face(frame) -> tuple:
-    """
-    Recognize face in frame
-    Returns (name, greeting) or (None, None)
-    """
+    """Returns (greeting_name, greeting) or (None, None)"""
     global app
     if app is None:
         init_face_model()
-   
+    sync_from_vision_data()
+
     faces = app.get(frame)
     if not faces:
         return None, None
-   
     db = load_db()
     if not db:
         return None, None
-   
-    query_embedding = faces[0].embedding
-    best_match = None
-    best_score = -1
-    best_greeting = None
-   
-    for name, data in db.items():
-        stored_embedding = np.array(data["embedding"])
-        score = np.dot(query_embedding, stored_embedding) / (
-            np.linalg.norm(query_embedding) * np.linalg.norm(stored_embedding)
-        )
+
+    q = _biggest(faces).embedding
+    best_id, best_score, best_greet = None, -1, None
+    for fid, data in db.items():
+        stored = np.array(data["embedding"])
+        score = np.dot(q, stored) / (np.linalg.norm(q) * np.linalg.norm(stored))
         if score > best_score:
-            best_score = score
-            best_match = name
-            best_greeting = data["greeting"]
-   
-    if best_score > 0.4:  # confidence threshold
-        print(f"[FACE] Recognized: {best_match} (score: {best_score:.2f})")
-        return best_match, best_greeting
-   
+            best_score, best_id, best_greet = score, fid, data["greeting"]
+
+    if best_score > 0.4:
+        print(f"[FACE] Recognized id {best_id} '{best_greet}' (score {best_score:.2f})")
+        return best_greet, best_greet
+    print(f"[FACE] Best score {best_score:.2f} — below threshold")
     return None, None
 
 def scan_face_from_camera(timeout=10) -> tuple:
-    """
-    Opens USB camera, scans for face
-    Returns (name, greeting) or (None, None)
-    """
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("[FACE] Cannot open camera")
         return None, None
-
     print("[FACE] Camera active, scanning...")
-    import time
     start = time.time()
     name, greeting = None, None
-
     while time.time() - start < timeout:
         ret, frame = cap.read()
         if not ret:
@@ -124,27 +140,20 @@ def scan_face_from_camera(timeout=10) -> tuple:
         name, greeting = recognize_face(frame)
         if name:
             break
-        time.sleep(0.5)
-
+        time.sleep(0.3)
     cap.release()
     return name, greeting
 
 def list_faces() -> list:
-    """List all registered faces"""
-    db = load_db()
-    return [{"name": k, "greeting": v["greeting"]} for k, v in db.items()]
+    return [{"id": k, "greeting": v["greeting"]} for k, v in load_db().items()]
 
-def delete_face(name: str) -> bool:
-    """Delete a face from database"""
+def delete_face(fid: str) -> bool:
     db = load_db()
-    if name in db:
-        del db[name]
+    if str(fid) in db:
+        del db[str(fid)]
         save_db(db)
-        print(f"[FACE] Deleted: {name}")
         return True
     return False
 
 def clear_all_faces():
-    """Clear all faces from database"""
     save_db({})
-    print("[FACE] All faces cleared")

@@ -126,6 +126,19 @@ textarea.field{min-height:84px;resize:none}
   font-weight:800;flex-shrink:0}
 #fc-name{font-size:1.25rem;font-weight:800}
 #fc-greet{font-size:.92rem;color:var(--muted);margin-top:3px;line-height:1.35}
+
+/* ═══ Face tracking overlay ═══ */
+#track-view{position:fixed;inset:0;background:#000;z-index:47;display:none;flex-direction:column}
+#track-view.open{display:flex}
+#tv-wrap{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center}
+#tv-img{max-width:100%;max-height:100%;display:block}
+#tv-boxes{position:absolute;pointer-events:none}
+.tv-box{position:absolute;border:3px solid #5AD680;border-radius:10px;pointer-events:none}
+.tv-box.sel{border-color:var(--blue);box-shadow:0 0 18px rgba(41,121,255,.6)}
+.tv-box.sel::after{content:'TRACKING';position:absolute;top:-24px;left:0;color:var(--blue);
+  font-size:.7rem;font-weight:800;letter-spacing:.1em}
+#tv-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#0B0B0D}
+#tv-hint{flex:1;font-size:.85rem;color:var(--muted)}
 #voice-overlay{position:absolute;left:0;right:0;bottom:0;pointer-events:none;
   display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 20px 16px;
   background:linear-gradient(to top,rgba(0,0,0,.9),transparent)}
@@ -380,7 +393,7 @@ textarea.field{min-height:84px;resize:none}
       </div>
       <div id="action-right">
         <div id="action-tools">
-          <button class="roundbtn" onclick="api('/home');toast('Home position')" title="Home">
+          <button class="roundbtn" onclick="goHome()" title="Home">
             <svg viewBox="0 0 24 24"><path d="M4 11 12 4l8 7M6 10v9h12v-9"/></svg></button>
           <button class="roundbtn" onclick="api('/loop_undo');toast('Last pose removed')" title="Undo">
             <svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5M4 9h9a7 7 0 0 1 0 14h-2"/></svg></button>
@@ -572,10 +585,31 @@ textarea.field{min-height:84px;resize:none}
   <button class="pill-btn blue" onclick="hideReminder()">Dismiss</button>
 </div>
 
+<!-- ═══ Face tracking overlay ═══ -->
+<div id="track-view">
+  <div id="tv-wrap">
+    <img id="tv-img" alt="">
+    <div id="tv-boxes"></div>
+  </div>
+  <div id="tv-bar">
+    <span id="tv-hint">Tap a face to track — Ben's head will follow them</span>
+    <button class="pill-btn outline" onclick="api('/display/track_clear');toast('Target cleared')">Clear target</button>
+    <button class="pill-btn blue" onclick="stopTracking()">Turn off</button>
+  </div>
+</div>
+
 <div id="face-card" onclick="hideFaceCard()">
   <img id="fc-photo" alt="">
   <div id="fc-initial"></div>
   <div><div id="fc-name"></div><div id="fc-greet"></div></div>
+</div>
+
+<!-- Low-battery alert banner -->
+<div id="batt-alert" style="position:fixed;bottom:var(--tabbar);left:0;right:0;z-index:44;
+     background:#dc2626;color:#fff;text-align:center;padding:13px;
+     font-size:1.15rem;font-weight:700;display:none;
+     box-shadow:0 -4px 20px rgba(0,0,0,.4);">
+  ⚠️ Low Battery — please charge the robot
 </div>
 
 <div id="toast"></div>
@@ -586,7 +620,7 @@ textarea.field{min-height:84px;resize:none}
 const API = '';
 const HAND_PARTS   = ['head','lateral','shoulder','forearm','elbow','wrist'];
 const FINGER_PARTS = ['thumb','index','middle','ring','pinky'];
-const SERVO_MIN=0, SERVO_MAX=1000, SERVO_DEF=500;   // joint sliders
+const SERVO_MIN=0, SERVO_MAX=2000, SERVO_DEF=1000;   // joint sliders (home = 1000 = 90°)
 const FINGER_MIN=0, FINGER_MAX=100, FINGER_DEF=50;  // finger sliders (matches app UI)
 
 /* ═════════ helpers ═════════ */
@@ -643,16 +677,38 @@ document.querySelectorAll('#dpad .quads button').forEach(b=>{
 function flip(el){ el.classList.toggle('on'); return el.classList.contains('on'); }
 function tglObstacle(el){ api('/obstacle_avoidance?value='+(flip(el)?'up':'down')); }
 function tglTrack(el,mirror){ const on=flip(el); api('/face_tracking?value='+on);
-  const other=mirror?$('#tgl-track'):$('#tgl-track2');
-  if(other) other.classList.toggle('on',on); }
+  syncTracking(on); }
 function tglChat(el){ api('/online_chat?enabled='+flip(el)); }
 
 /* ═════════ action (arms) ═════════ */
 let hand='left';
+const jointVals={left:{},right:{}};          // remembered positions per hand
+HAND_PARTS.forEach(p=>{ jointVals.left[p]=SERVO_DEF; jointVals.right[p]=SERVO_DEF; });
+FINGER_PARTS.forEach(p=>{ jointVals.left[p]=FINGER_DEF; jointVals.right[p]=FINGER_DEF; });
+
+function loadHandSliders(){
+  const src=(hand==='right')?jointVals.right:jointVals.left;  // 'both' shows left
+  document.querySelectorAll('#action-sliders input,#finger-sliders input').forEach(r=>{
+    const v=src[r.dataset.part];
+    if(v!=null){ r.value=v; paint(r); }
+  });
+}
 document.querySelectorAll('#hand-seg button').forEach(b=>b.addEventListener('click',()=>{
   hand=b.dataset.hand; api('/hand?value='+hand);
   document.querySelectorAll('#hand-seg button').forEach(x=>x.classList.toggle('on',x===b));
+  loadHandSliders();                          // show THIS hand's positions
 }));
+function goHome(){
+  api('/home');
+  document.querySelectorAll('#action-sliders input').forEach(r=>{ r.value=SERVO_DEF; paint(r); });
+  document.querySelectorAll('#finger-sliders input').forEach(r=>{ r.value=FINGER_DEF; paint(r); });
+  ['left','right'].forEach(h=>{
+    HAND_PARTS.forEach(p=>{ jointVals[h][p]=SERVO_DEF; Bot.setJoint(p,SERVO_DEF,h); });
+    FINGER_PARTS.forEach(p=>{ jointVals[h][p]=FINGER_DEF; Bot.setJoint(p,FINGER_DEF,h); });
+  });
+  toast('Home position');
+}
+
 function sendPos(part,val){
   if(hand==='both'){ api(`/position?part=${part}&value=${val}&hand=left`);
                      api(`/position?part=${part}&value=${val}&hand=right`); }
@@ -665,7 +721,10 @@ function makeJoint(part,min,max,def,label){
     <output>${def}</output>`;
   const r=row.querySelector('input'); paint(r);
   r.addEventListener('input',()=>{ paint(r);
-    Bot.setJoint(part,+r.value,hand);
+    const v=+r.value;
+    if(hand==='both'){ jointVals.left[part]=v; jointVals.right[part]=v; }
+    else jointVals[hand][part]=v;
+    Bot.setJoint(part,v,hand);
     thr('sv-'+part,()=>sendPos(part,r.value)); });
   return row;
 }
@@ -777,8 +836,18 @@ addFaceRow(); addFaceRow(); addFaceRow();
 async function poll(){
   try{
     const r=await fetch(API+'/status'); const s=await r.json();
-    $('#batt-pct').textContent=(s.battery??'--')+'%';
-    $('#batt-fill').setAttribute('width',Math.max(1,16*(s.battery??0)/100));
+    const pct=Math.max(0,Math.min(100,s.battery??100));
+    $('#batt-pct').textContent=pct+'%';
+    const LOW=20, CRITICAL=10;
+    const fill=$('#batt-fill');
+    fill.setAttribute('width',Math.max(1,16*pct/100));
+    fill.setAttribute('fill',
+      pct<=CRITICAL?'#dc2626':pct<=LOW?'#f59e0b':'#4ade80');
+    const al=$('#batt-alert');
+    al.style.display=pct<=LOW?'block':'none';
+    al.textContent=pct<=CRITICAL
+      ?'🔴 Critical Battery — charge immediately!'
+      :'⚠️ Low Battery — please charge the robot';
   }catch{}
 }
 setInterval(poll,5000); poll();
@@ -824,6 +893,7 @@ function connectSSE(){
     else if(d.type==='reminder'){ showReminder(d.text); addLog(d.text,'ben'); remPoll(); }
     else if(d.type==='face_greet'){ showFaceCard(d.name,d.text);
       addLog(d.text||('Hello '+(d.name||'there')),'ben'); }
+    else if(d.type==='face_tracking'){ syncTracking(d.text==='on'); }
     else if(d.type==='notice'){ toast(d.text||''); }
   };
   es.onerror=()=>{ es.close(); setTimeout(connectSSE,3000); };
@@ -1152,6 +1222,59 @@ function showFaceCard(name,greet){
   timers._face=setTimeout(hideFaceCard,12000);
 }
 function hideFaceCard(){ $('#face-card').classList.remove('show'); }
+
+/* ═════════ face tracking overlay ═════════ */
+const tvImg=$('#tv-img'), tvBoxes=$('#tv-boxes');
+let tvOpen=false;
+
+function syncTracking(on){
+  $('#tgl-track').classList.toggle('on',on);
+  $('#tgl-track2').classList.toggle('on',on);
+  if(on && !tvOpen) openTracker();
+  if(!on && tvOpen) closeTracker();
+}
+function openTracker(){
+  tvOpen=true;
+  tvImg.src=API+'/display/camera?t='+Date.now();
+  $('#track-view').classList.add('open');
+  timers._tv=setInterval(tvPoll,300);
+}
+function closeTracker(){
+  tvOpen=false;
+  clearInterval(timers._tv);
+  $('#track-view').classList.remove('open');
+  tvImg.removeAttribute('src');
+  tvBoxes.innerHTML='';
+}
+function stopTracking(){ api('/face_tracking?value=false'); syncTracking(false); }
+
+async function tvPoll(){
+  if(!tvOpen) return;
+  try{
+    const s=await (await fetch(API+'/display/faces_live')).json();
+    // align the box layer with the rendered image
+    const r=tvImg.getBoundingClientRect(), w=$('#tv-wrap').getBoundingClientRect();
+    tvBoxes.style.left=(r.left-w.left)+'px'; tvBoxes.style.top=(r.top-w.top)+'px';
+    tvBoxes.style.width=r.width+'px'; tvBoxes.style.height=r.height+'px';
+    tvBoxes.innerHTML='';
+    (s.boxes||[]).forEach(b=>{
+      const d=document.createElement('div');
+      d.className='tv-box'+(b.sel?' sel':'');
+      d.style.left=(b.x*r.width)+'px';  d.style.top=(b.y*r.height)+'px';
+      d.style.width=(b.w*r.width)+'px'; d.style.height=(b.h*r.height)+'px';
+      tvBoxes.appendChild(d);
+    });
+    $('#tv-hint').textContent=s.tracking
+      ? 'Tracking — tap another face to switch, or Clear target'
+      : "Tap a face to track — Ben's head will follow them";
+  }catch{}
+}
+$('#tv-wrap').addEventListener('click',e=>{
+  const r=tvImg.getBoundingClientRect();
+  const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+  if(x<0||x>1||y<0||y>1) return;
+  api('/display/track_select?x='+x.toFixed(3)+'&y='+y.toFixed(3));
+});
 const Bot={ speaking:false, setJoint(){}, resize(){} };
 (function init3D(){
   if(typeof THREE==='undefined'){
@@ -1207,13 +1330,14 @@ const Bot={ speaking:false, setJoint(){}, resize(){} };
   }
   const arms={ left:buildArm(1), right:buildArm(-1) };
 
-  const t=v=>(v-500)/500, rad=d=>d*Math.PI/180;
+  const SMID=(SERVO_MIN+SERVO_MAX)/2;
+  const t=v=>(v-SMID)/(SERVO_MAX-SMID), rad=d=>d*Math.PI/180;
   const pose={left:{shoulder:0,lateral:0,elbow:-.2,wrist:0,curl:0},
               right:{shoulder:0,lateral:0,elbow:-.2,wrist:0,curl:0}, headYaw:0};
   function setOne(p,part,v){
     if(part==='shoulder') p.shoulder=rad(-t(v)*90);
     else if(part==='lateral') p.lateral=rad(t(v)*80);
-    else if(part==='elbow'||part==='forearm') p.elbow=rad(-(v/1000)*115);
+    else if(part==='elbow'||part==='forearm') p.elbow=rad(-(v/SERVO_MAX)*115);
     else if(part==='wrist') p.wrist=rad(t(v)*80);
     else if(FINGER_PARTS.includes(part)) p.curl=v/FINGER_MAX;
   }
@@ -1260,5 +1384,8 @@ const Bot={ speaking:false, setJoint(){}, resize(){} };
   });
 })();
 </script>
+
+
+
 </body>
 </html>

@@ -189,7 +189,17 @@ def esp32_reader():
                     line = esp32.readline().decode('utf-8', errors='ignore').strip()
                     if not line: continue
                     last_data = time.time()
-                    print(f"[ESP32] << {line}")
+
+                    # -- Battery level from heartbeat ----------
+                    if "BATT:" in line:
+                        try:
+                            robot_state['battery'] = int(line.split("BATT:")[1].strip())
+                        except: pass
+
+                    # Heartbeat (Dist:...)  parsed above, don't spam log
+                    if not line.startswith("Dist:"):
+                        print(f"[ESP32] << {line}")
+
                     if line.startswith("PERSON_DETECTED:") and obstacle_avoidance_enabled:
                         threading.Thread(target=speak_welcome, daemon=True).start()
                     elif line.startswith("OBSTACLE:") and obstacle_avoidance_enabled:
@@ -200,13 +210,16 @@ def esp32_reader():
                     elif line.startswith("SHUTDOWN"):
                         print("[ESP32] Button shutdown received!")
                         threading.Thread(target=do_shutdown, daemon=True).start()
+                    elif line.startswith("FACTORY_RESET"):
+                        print("[ESP32] Factory reset button!")
+                        threading.Thread(target=do_factory_reset, daemon=True).start()
+
                 if time.time() - last_data > 120:
                     reconnect_esp32(); last_data = time.time()
         except Exception as e:
             print(f"[ESP32] Reader error: {e}")
             reconnect_esp32(); last_data = time.time()
         time.sleep(0.05)
-
 threading.Thread(target=esp32_reader, daemon=True).start()
 
 # ── Move keepalive (ESP32 watchdog needs refresh every <500ms) ──
@@ -238,35 +251,63 @@ def run_loop():
 def face_tracking_loop():
     global head_position
     import cv2
-    cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    from face_utils import init_face_model, _biggest
+    import face_utils
+
+    init_face_model()                 # reuse the model already loaded
     cap = None
-    print("[TRACK] Face tracking started")
+    last_seen = 0
+    print("[TRACK] Face tracking started (InsightFace detector)")
+
     while face_tracking_enabled:
         try:
+            if tracking_paused:
+                if cap is not None:
+                    cap.release(); cap = None
+                time.sleep(0.5)
+                continue
+
             if cap is None or not cap.isOpened():
                 cap = cv2.VideoCapture(0)
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                 if not cap.isOpened():
-                    time.sleep(3); continue
+                    print("[TRACK] No camera  retry in 3s")
+                    cap = None; time.sleep(3); continue
+
             ret, frame = cap.read()
             if not ret:
                 time.sleep(0.1); continue
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = cascade.detectMultiScale(gray, 1.2, 5, minSize=(60,60))
-            if len(faces) > 0:
-                x, y, w, h = max(faces, key=lambda f: f[2]*f[3])
-                offset = ((x + w/2) - frame.shape[1]/2) / (frame.shape[1]/2)
-                if abs(offset) > 0.15:
-                    step = max(-150, min(150, int(offset * 120)))
-                    head_position = max(0, min(2000, head_position - step))
+
+            faces = face_utils.app.get(frame)
+
+            if faces:
+                f = _biggest(faces)
+                x1, _, x2, _ = f.bbox
+                frame_w = frame.shape[1]
+                offset = (((x1 + x2) / 2) - frame_w / 2) / (frame_w / 2)
+                last_seen = time.time()
+
+                if abs(offset) > DEADZONE:
+                    target = HEAD_CENTER - int(offset * FOV_HALF_UNITS)
+                    target = max(0, min(2000, target))
+                    head_position = int(head_position +
+                                        (target - head_position) * SMOOTH)
                     send_to_esp32(f"POS:headLR:{head_position}:left")
+            else:
+                if time.time() - last_seen > 8 and abs(head_position - HEAD_CENTER) > 30:
+                    head_position = int(head_position +
+                                        (HEAD_CENTER - head_position) * 0.15)
+                    send_to_esp32(f"POS:headLR:{head_position}:left")
+
             time.sleep(0.15)
+
         except Exception as e:
             print(f"[TRACK] Error: {e}")
             time.sleep(1)
-    if cap is not None: cap.release()
+
+    if cap is not None:
+        cap.release()
     print("[TRACK] Face tracking stopped")
 
 # ═══════════════════════════════════════════════════════════
@@ -285,7 +326,7 @@ def ping():
 def handle_status():
     uptime = (datetime.now() - datetime.fromisoformat(robot_state['boot_time'])).total_seconds()
     return jsonify({
-        "status":"ok","battery":85,"connected":True,"wifi":True,
+        "status":"ok","battery": robot_state.get('battery', 100),"connected":True,"wifi":True,
         "uptime":int(uptime),"command_count":robot_state['command_count'],
         "current_state":{
             "direction":robot_state['direction'],"speed":robot_state['speed'],
@@ -626,13 +667,16 @@ def save_base64_image(base64_str, base_filename):
 @app.route('/face_tracking', methods=['GET'])
 def handle_face_tracking():
     global face_tracking_enabled
-    value = request.args.get('value','false').lower()
-    was = face_tracking_enabled
+    value = request.args.get('value', 'false').lower()
     face_tracking_enabled = (value == 'true')
-    log_command('VISION','/face_tracking',{'enabled':face_tracking_enabled})
-    if face_tracking_enabled and not was:
-        threading.Thread(target=face_tracking_loop, daemon=True).start()
-    return jsonify({"status":"ok","value":face_tracking_enabled}), 200
+    try:
+        import face_tracker
+        face_tracker.set_send_fn(send_to_esp32)      # head control
+        face_tracker.set_enabled(face_tracking_enabled)
+    except Exception as e:
+        print(f"[TRACK] {e}")
+    print(f"[FACE-TRACK] {'ON' if face_tracking_enabled else 'OFF'}")
+    return jsonify({"status": "ok", "face_tracking": face_tracking_enabled}), 200
 
 @app.route('/upload_face', methods=['POST'])
 def handle_upload_face_single():

@@ -21,3 +21,8 @@ faces_db.pkl
 settings.json
 ai_config.json
 shutdown.wav
+voices/
+reminders.json
+*.bak
+*.old
+faces_db.pkl

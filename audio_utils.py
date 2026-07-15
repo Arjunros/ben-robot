@@ -5,20 +5,23 @@ import threading
 
 RECORD_PATH = "/tmp/recorded.wav"
 RAW_PATH    = "/tmp/raw_recorded.wav"
-PIPER_BIN   = '/home/ben/pi_assistant/venv/bin/piper'
+PIPER_BIN   = '/usr/local/bin/piper'
 
 # Only one audio operation at a time prevents device conflicts
 audio_lock = threading.Lock()
 
 def get_mic_device():
     result = subprocess.run(['arecord', '-l'], capture_output=True, text=True)
-    for line in result.stdout.splitlines():
-        if 'googlevoice' in line.lower():
-            parts = line.split(':')
-            if parts[0].startswith('card '):
-                card = int(parts[0].replace('card ', '').strip())
-                print(f"[MIC] Google Voice HAT found on card {card}")
-                return f"plughw:{card},0"
+    # Preference order: wireless lav mic ? INMP441 (voiceHAT) ? default
+    for keyword, label in [('mfiiap2', 'Wireless mic'),
+                           ('googlevoice', 'Google Voice HAT')]:
+        for line in result.stdout.splitlines():
+            if keyword in line.lower():
+                parts = line.split(':')
+                if parts[0].startswith('card '):
+                    card = int(parts[0].replace('card ', '').strip())
+                    print(f"[MIC] {label} found on card {card}")
+                    return f"plughw:{card},0"
     print("[MIC] Using default plughw:0,0")
     return "plughw:0,0"
 

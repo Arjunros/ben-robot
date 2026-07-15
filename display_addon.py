@@ -40,7 +40,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Wi-Fi client interface (internet). The AP interface is never touched.
 #   Jetson: internal card  = "wlP1p1s0"
 #   Raspberry Pi: usually  = "wlan0"     <-- change this per robot
-WIFI_CLIENT_IFACE = "wlan0"
+WIFI_CLIENT_IFACE = "wlP1p1s0"
 _subscribers = []
 _lock = threading.Lock()
 
@@ -760,6 +760,53 @@ def init_display(app):
         print(f"[REMIND] Cancelled {n}")
         return {"status": "ok", "cancelled": n}, 200
 
+    # ── face tracking (chest camera) ─────────────────────────
+    @app.route("/display/camera")
+    def display_camera():
+        from flask import Response
+
+        def gen():
+            import face_tracker
+            import time as _ct
+            while face_tracker.is_enabled():
+                f = face_tracker.get_jpeg()
+                if f:
+                    yield (b"--frame\r\nContent-Type: image/jpeg\r\n"
+                           b"Content-Length: " + str(len(f)).encode()
+                           + b"\r\n\r\n" + f + b"\r\n")
+                _ct.sleep(0.08)          # ~12 fps to the display
+        return Response(gen(),
+                        mimetype="multipart/x-mixed-replace; boundary=frame")
+
+    @app.route("/display/faces_live")
+    def display_faces_live():
+        try:
+            import face_tracker
+            return face_tracker.get_state(), 200
+        except Exception as e:
+            return {"enabled": False, "tracking": False,
+                    "boxes": [], "error": str(e)}, 200
+
+    @app.route("/display/track_select")
+    def display_track_select():
+        try:
+            import face_tracker
+            x = float(request.args.get("x", 0.5))
+            y = float(request.args.get("y", 0.5))
+            ok = face_tracker.select_at(x, y)
+            return {"status": "ok" if ok else "miss"}, 200
+        except Exception as e:
+            return {"status": "error", "message": str(e)}, 500
+
+    @app.route("/display/track_clear")
+    def display_track_clear():
+        try:
+            import face_tracker
+            face_tracker.clear_target()
+        except Exception:
+            pass
+        return {"status": "ok"}, 200
+
     @app.route("/display/say", methods=["POST"])
     def display_say():
         data = request.get_json(silent=True) or {}
@@ -833,6 +880,7 @@ def init_display(app):
             if os.path.isfile(p):
                 return send_file(p)
         return {"status": "error", "message": "no photo"}, 404
+    
 
     _registered = True
     print("[DISPLAY] Routes ready at /display")
