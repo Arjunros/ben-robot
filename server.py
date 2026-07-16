@@ -6,6 +6,12 @@ from datetime import datetime
 
 # ── Self-locating base dir (immune to lisa/ben/nova username differences) ──
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+def _read_version():
+    try:
+        with open(f"{BASE_DIR}/VERSION") as f:
+            return f.read().strip()
+    except:
+        return "0.0.0"
 POSES_FILE  = f"{BASE_DIR}/pose_store.json"
 QA_JSON     = f"{BASE_DIR}/qa_pairs.json"
 QA_TXT      = f"{BASE_DIR}/qa_pairs.txt"
@@ -332,6 +338,7 @@ def handle_status():
             "direction":robot_state['direction'],"speed":robot_state['speed'],
             "eyes":robot_state['eyes'],"mode":robot_state['mode'],
             "hand":robot_state['hand'],"loop_running":robot_state['loop_running'],
+            "version": _read_version(),
             "pose_count":len(robot_state['poses'])}}), 200
 
 # ── Movement ───────────────────────────────────────────────
@@ -741,7 +748,24 @@ def handle_restart():
         subprocess.run(["reboot"])
     threading.Thread(target=_restart, daemon=True).start()
     return jsonify({"status": "ok", "command": "restart"}), 200
+    
+@app.route('/version', methods=['GET'])
+def handle_version():
+    return jsonify({"version": _read_version()}), 200
 
+@app.route('/update', methods=['GET'])
+def handle_update():
+    log_command('SYSTEM', '/update', {'from': _read_version()})
+    def _run():
+        try:
+            from audio_utils import speak
+            speak("Updating my software. I will be back in a moment.")
+        except: pass
+        r = subprocess.run(['bash', f'{BASE_DIR}/update.sh'],
+                           capture_output=True, text=True, timeout=900)
+        print(f"[UPDATE] exit={r.returncode}")
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "ok", "message": "Update started"}), 200
 # ── Catch-all debug ────────────────────────────────────────
 @app.route('/<path:path>', methods=['GET','POST'])
 def catch_all(path):
