@@ -6,16 +6,20 @@
 <title>BEN · MAX — Technovation</title>
 <style>
 :root{
-  --bg:#000; --pill:#26292F; --pill2:#1A1C20; --field:#0C0D10;
-  --blue:#2979FF; --blue-dim:#0E3E96; --navy:#232848;
-  --green:#22C55E; --red:#EF4444; --track:#4A4E55;
-  --text:#FFFFFF; --muted:#9BA1AC;
+  --bg:#05070C; --pill:#161A22; --pill2:#10131A; --field:#0A0C11;
+  --blue:#2979FF; --blue-dim:#0E3E96; --navy:#1C2138;
+  --green:#22C55E; --red:#EF4444; --track:#333945;
+  --text:#FFFFFF; --muted:#8993A5;
   --tabbar:64px; --topbar:64px;
   font-size:16px;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:manipulation}
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
-  font-family:'Segoe UI',system-ui,-apple-system,Inter,Roboto,sans-serif}
+html,body{height:100%;overflow:hidden;color:var(--text);
+  font-family:'Segoe UI',system-ui,-apple-system,Inter,Roboto,sans-serif;
+  background:
+    radial-gradient(1100px 700px at 50% -10%, #0E1830 0%, transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, #10162A 0%, transparent 55%),
+    var(--bg)}
 .mono{font-family:ui-monospace,'Roboto Mono',Menlo,monospace}
 input,textarea{user-select:text;-webkit-user-select:text}
 
@@ -42,15 +46,19 @@ input,textarea{user-select:text;-webkit-user-select:text}
 .scrolly{overflow-y:auto;-webkit-overflow-scrolling:touch;min-height:0}
 
 /* ═══ Bottom tab bar ═══ */
-#tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar);display:flex;gap:6px;
-  padding:0 10px;background:#0B0B0D}
-.tab{flex:1;border:none;border-bottom:none;background:#3A3E45;color:#DDD;font-size:.92rem;font-weight:600;
-  border-radius:18px 18px 0 0;margin-top:10px;transition:margin .12s}
-.tab.active{background:#22252B;color:#fff;margin-top:4px;
-  box-shadow:inset 0 0 0 2px var(--blue);border-bottom:none}
+#tabbar{position:fixed;bottom:0;left:0;right:0;height:var(--tabbar);display:flex;gap:8px;
+  padding:8px 12px 10px;background:linear-gradient(to top,#080A10,rgba(8,10,16,.6))}
+.tab{flex:1;border:none;background:rgba(255,255,255,.05);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#C3CCDA;font-size:.9rem;font-weight:600;
+  border-radius:14px;letter-spacing:.02em;transition:.14s;
+  box-shadow:inset 0 0 0 1px rgba(120,150,220,.08)}
+.tab.active{background:linear-gradient(180deg,#20335E,#131A2E 100%);color:#fff;
+  box-shadow:inset 0 0 0 1.5px var(--blue),0 0 18px rgba(41,121,255,.35)}
+.tab:active{transform:scale(.97)}
 
 /* ═══ Shared pieces ═══ */
-.seg{display:flex;background:var(--pill);border-radius:999px;padding:5px;gap:4px}
+.seg{display:flex;background:rgba(255,255,255,.06);border-radius:999px;padding:5px;gap:4px;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
 .seg button{flex:1;border:none;background:transparent;color:#D5D8DE;font-size:.95rem;font-weight:600;
   padding:12px 10px;border-radius:999px}
 .seg button.on{background:var(--blue);color:#fff}
@@ -62,7 +70,10 @@ input,textarea{user-select:text;-webkit-user-select:text}
 .pill-btn:active{filter:brightness(1.2)}
 .pill-btn.grow{flex:1}
 
-.slider-pill{display:flex;align-items:center;gap:14px;background:var(--pill);border-radius:999px;
+.slider-pill{display:flex;align-items:center;gap:14px;
+  background:rgba(255,255,255,.055);border-radius:999px;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
   padding:10px 22px;min-height:62px}
 .slider-pill label{font-size:1rem;font-weight:600;min-width:86px}
 .slider-pill output{min-width:52px;text-align:right;font-size:1rem;font-weight:600}
@@ -84,13 +95,19 @@ input[type=range]::-moz-range-thumb{width:30px;height:30px;border-radius:50%;bac
 .roundbtn svg{width:22px;height:22px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .roundbtn:active{filter:brightness(1.25);transform:scale(.94)}
 
-.field{width:100%;background:var(--field);border:1px solid #2E3138;border-radius:14px;color:#fff;
+.field{width:100%;background:rgba(255,255,255,.045);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.1);border-radius:14px;color:#fff;
   padding:14px 16px;font-size:1rem}
 .field::placeholder{color:#6B7078}
 textarea.field{min-height:84px;resize:none}
 
 /* ═══ BEN page (3D + speech) ═══ */
+#face-stage::before{content:'';position:absolute;left:50%;bottom:8%;width:62%;height:60px;
+  transform:translateX(-50%);border-radius:50%;pointer-events:none;
+  background:radial-gradient(ellipse at center,rgba(41,121,255,.42) 0%,rgba(41,121,255,.10) 45%,transparent 72%);
+  filter:blur(3px);animation:podium 3.4s ease-in-out infinite}
+@keyframes podium{0%,100%{opacity:.65;transform:translateX(-50%) scaleX(1)}50%{opacity:1;transform:translateX(-50%) scaleX(1.06)}}
 #face-stage{flex:1;position:relative;overflow:hidden;min-height:0;border-radius:22px;
+  box-shadow:inset 0 0 0 1px rgba(120,150,220,.14), inset 0 30px 80px rgba(10,20,45,.5);
   background:radial-gradient(ellipse at 50% 28%,#10131B 0%,#000 72%)}
 #bot3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 #stage-hint{position:absolute;top:12px;right:16px;font-size:.66rem;color:var(--muted);letter-spacing:.1em;opacity:.7}
@@ -104,7 +121,7 @@ textarea.field{min-height:84px;resize:none}
 
 /* ═══ Reminder banner ═══ */
 #rem-banner{position:fixed;top:80px;left:50%;transform:translate(-50%,-160px);
-  background:var(--navy);border-radius:22px;padding:20px 26px;z-index:48;
+  background:rgba(28,33,56,.72);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-radius:22px;padding:20px 26px;z-index:48;
   display:flex;align-items:center;gap:16px;max-width:min(640px,90vw);
   box-shadow:0 10px 40px rgba(0,0,0,.6);transition:transform .3s}
 #rem-banner.show{transform:translate(-50%,0)}
@@ -115,7 +132,7 @@ textarea.field{min-height:84px;resize:none}
 
 /* ═══ Face greeting card ═══ */
 #face-card{position:fixed;top:80px;left:50%;transform:translate(-50%,-200px);
-  background:var(--navy);border-radius:24px;padding:18px 26px;z-index:48;
+  background:rgba(28,33,56,.72);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-radius:24px;padding:18px 26px;z-index:48;
   display:flex;align-items:center;gap:18px;max-width:min(560px,90vw);
   box-shadow:0 10px 40px rgba(0,0,0,.6);transition:transform .35s}
 #face-card.show{transform:translate(-50%,0)}
@@ -140,19 +157,13 @@ textarea.field{min-height:84px;resize:none}
 #tv-bar{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#0B0B0D}
 #tv-hint{flex:1;font-size:.85rem;color:var(--muted)}
 #voice-overlay{position:absolute;left:0;right:0;bottom:0;pointer-events:none;
-  display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 20px 16px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 20px 16px;
   background:linear-gradient(to top,rgba(0,0,0,.9),transparent)}
-#wave{display:flex;align-items:center;gap:5px;height:34px}
-#wave span{width:7px;border-radius:4px;background:var(--blue);height:6px;opacity:.3;transition:height .1s}
-.speaking #wave span{opacity:1;animation:wv .8s ease-in-out infinite}
-@keyframes wv{0%,100%{height:8px}50%{height:28px}}
-.speaking #wave span:nth-child(2n){animation-delay:.12s}
-.speaking #wave span:nth-child(3n){animation-delay:.24s}
-.speaking #wave span:nth-child(5n){animation-delay:.36s}
+#aura-canvas{width:280px;height:80px;display:block}
 #caption{min-height:34px;max-width:88%;text-align:center;font-size:1.3rem;line-height:1.3;font-weight:600;
   text-shadow:0 2px 12px rgba(0,0,0,.8)}
 #caption.idle{color:var(--muted);font-weight:400;font-size:1rem}
-#facelog{background:var(--pill2);border-radius:18px;padding:10px 18px;max-height:86px;overflow:hidden}
+#facelog{background:rgba(255,255,255,.05);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);border-radius:18px;padding:10px 18px;max-height:86px;overflow:hidden}
 #facelog .line{font-size:.8rem;color:var(--muted);padding:3px 0;display:flex;gap:10px}
 #facelog .line b{color:var(--blue);font-weight:600;flex-shrink:0}
 
@@ -183,7 +194,7 @@ textarea.field{min-height:84px;resize:none}
 #action-tools .slider-pill{flex:1}
 #action-bottom{display:flex;gap:12px}
 #action-right{display:flex;flex-direction:column;gap:10px;min-height:0}
-.fingers-pill{display:flex;align-items:center;gap:14px;background:var(--pill);border-radius:999px;
+.fingers-pill{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.055);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);border-radius:999px;
   padding:10px 22px;min-height:62px;border:none;color:#fff}
 .fingers-pill b{font-size:1rem;font-weight:600}
 .fingers-pill .chev{margin-left:auto;color:var(--blue);font-size:1.2rem}
@@ -218,7 +229,7 @@ textarea.field{min-height:84px;resize:none}
 #upload-hint{font-size:.74rem;color:var(--muted);flex:1;min-width:180px}
 #upload-prog{font-size:.85rem;color:var(--blue);font-weight:600}
 #video-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-.vcard{background:var(--pill2);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.vcard{background:rgba(255,255,255,.05);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:8px}
 .vcard .vname{font-size:.9rem;font-weight:600;word-break:break-all;line-height:1.3}
 .vcard .vmeta{font-size:.72rem;color:var(--muted)}
 .vcard .vrow{display:flex;gap:8px;margin-top:auto}
@@ -227,7 +238,7 @@ textarea.field{min-height:84px;resize:none}
 #online-row{display:flex;gap:10px}
 #online-row .field{flex:1}
 #yt-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:12px}
-.ytcard{background:var(--pill2);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.ytcard{background:rgba(255,255,255,.05);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
 .ytcard img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#111}
 .ytcard .yt-body{padding:10px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
 .ytcard .vname{font-size:.85rem;font-weight:600;line-height:1.3;
@@ -252,7 +263,7 @@ textarea.field{min-height:84px;resize:none}
 /* ═══ Modals (navy, red X — like the app) ═══ */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:center;justify-content:center;z-index:50}
 .modal.open{display:flex}
-.modal .box{background:var(--navy);border-radius:24px;padding:26px;width:min(520px,92vw);
+.modal .box{background:rgba(28,33,56,.72);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1),0 20px 60px rgba(0,0,0,.5);border-radius:24px;padding:26px;width:min(520px,92vw);
   max-height:88vh;overflow-y:auto;position:relative}
 .modal .x{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--red);
   font-size:1.5rem;font-weight:700;line-height:1;padding:6px}
@@ -268,7 +279,7 @@ textarea.field{min-height:84px;resize:none}
 #notice-sub{text-align:center;color:var(--muted);font-size:.92rem;margin-top:-8px}
 
 #toast{position:fixed;bottom:calc(var(--tabbar) + 12px);left:50%;transform:translateX(-50%) translateY(90px);
-  background:var(--navy);color:#fff;border-radius:999px;padding:11px 22px;font-size:.85rem;
+  background:rgba(28,33,56,.8);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);color:#fff;border-radius:999px;padding:11px 22px;font-size:.85rem;
   transition:transform .25s;z-index:55;box-shadow:0 6px 20px rgba(0,0,0,.5)}
 #toast.show{transform:translateX(-50%) translateY(0)}
 
@@ -341,7 +352,7 @@ textarea.field{min-height:84px;resize:none}
         <div id="iw-rem"></div>
       </div>
       <div id="voice-overlay">
-        <div id="wave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <canvas id="aura-canvas" width="560" height="160"></canvas>
         <div id="caption" class="idle">Listening…</div>
       </div>
     </div>
@@ -361,7 +372,7 @@ textarea.field{min-height:84px;resize:none}
           </div>
           <span class="arrow up">▲</span><span class="arrow down">▼</span>
           <span class="arrow left">◀</span><span class="arrow right">▶</span>
-          <button id="dpad-center" onclick="api('/move?dir=stop')">
+          <button id="dpad-center" onclick="api('/move?dir=stop');Bot.setDrive('stop')">
             <img src="/display/logo.png" alt="" onerror="this.remove();this.parentElement.textContent='STOP'">
           </button>
         </div>
@@ -403,6 +414,11 @@ textarea.field{min-height:84px;resize:none}
         <button class="fingers-pill" onclick="openModal('fingers-modal')">
           <b>Fingers</b><span class="chev">▼</span>
         </button>
+        <div class="slider-pill">
+          <label>Servo Speed</label>
+          <input type="range" min="0" max="100" value="60" id="servo-speed">
+          <output>60</output>
+        </div>
         <div style="flex:1"></div>
         <div id="action-bottom">
           <button class="pill-btn outline grow" id="loop-btn" onclick="toggleLoopRun(this)">Start Loop</button>
@@ -476,12 +492,12 @@ textarea.field{min-height:84px;resize:none}
 
 <!-- ═══ Bottom tabs ═══ -->
 <nav id="tabbar">
-  <button class="tab active" data-page="ben">Ben</button>
-  <button class="tab" data-page="motion">Motion</button>
-  <button class="tab" data-page="action">Action</button>
-  <button class="tab" data-page="audio">Audio</button>
-  <button class="tab" data-page="face">Face</button>
+  <button class="tab active" data-page="ben">Talk to Ben</button>
   <button class="tab" data-page="media">Media</button>
+  <button class="tab" data-page="action">Action</button>
+  <button class="tab" data-page="audio">Speech AI</button>
+  <button class="tab" data-page="face">Vision AI</button>
+  <button class="tab" data-page="motion">Drive</button>
 </nav>
 
 <!-- ═══ Video player ═══ -->
@@ -615,6 +631,7 @@ textarea.field{min-height:84px;resize:none}
 <div id="toast"></div>
 
 <script src="/display/three.min.js"></script>
+<script src="/display/GLTFLoader.js"></script>
 <script>
 /* ═════════ CONFIG ═════════ */
 const API = '';
@@ -664,11 +681,14 @@ function uploadWifi(){
 /* ═════════ motion ═════════ */
 $('#speed').addEventListener('input',function(){ paint(this);
   thr('speed',()=>api('/speed?value='+this.value)); });
+const _ss=$('#servo-speed');
+if(_ss) _ss.addEventListener('input',function(){ paint(this);
+  thr('sspeed',()=>api('/topspeed?value='+this.value)); });
 document.querySelectorAll('#dpad .quads button').forEach(b=>{
   const dir=b.dataset.dir;
-  const go=e=>{ e.preventDefault(); b.classList.add('held'); api('/move?dir='+dir); };
+  const go=e=>{ e.preventDefault(); b.classList.add('held'); api('/move?dir='+dir); Bot.setDrive(dir); };
   const halt=()=>{ if(!b.classList.contains('held'))return;
-    b.classList.remove('held'); api('/move?dir=stop'); };
+    b.classList.remove('held'); api('/move?dir=stop'); Bot.setDrive('stop'); };
   b.addEventListener('pointerdown',go);
   b.addEventListener('pointerup',halt);
   b.addEventListener('pointercancel',halt);
@@ -848,6 +868,11 @@ async function poll(){
     al.textContent=pct<=CRITICAL
       ?'🔴 Critical Battery — charge immediately!'
       :'⚠️ Low Battery — please charge the robot';
+    // mirror the real robot's eye color + drive state on the 3D model
+    const eye=s.eyes||s.eye||s.eye_color||(s.current_state&&s.current_state.eyes);
+    if(eye) Bot.setEyeColor(eye);
+    const dir=s.direction||(s.current_state&&s.current_state.direction);
+    if(dir) Bot.setDrive(dir);
   }catch{}
 }
 setInterval(poll,5000); poll();
@@ -860,7 +885,63 @@ fetch(API+'/settings').then(r=>r.json()).then(s=>{
 
 /* ═════════ live speech (SSE) ═════════ */
 const cap=$('#caption'), stage=$('#face-stage'), log=$('#facelog');
-function setIdle(){ stage.classList.remove('speaking'); Bot.speaking=false;
+
+/* ═════════ Ben's unique voice aura (Siri-style, custom) ═════════ */
+let auraMode='listening';   // 'listening' | 'speaking'
+(function auraEngine(){
+  const cv=$('#aura-canvas'); if(!cv) return;
+  const ctx=cv.getContext('2d'); const W=cv.width, H=cv.height, midY=H/2;
+  // Ben's palette — three flowing ribbons
+  const COLORS=['#2979FF','#5FD4D0','#8A5CF6'];
+  let amp=0, targetAmp=0, t=0;
+  function frame(){
+    t+=0.045;
+    targetAmp = auraMode==='speaking' ? 1 : 0.18;   // big waves speaking, gentle breath listening
+    amp += (targetAmp-amp)*0.08;
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation='lighter';
+    if(auraMode==='speaking'){
+      // three layered sine ribbons, phase-shifted — the signature look
+      COLORS.forEach((c,li)=>{
+        ctx.beginPath();
+        for(let x=0;x<=W;x+=6){
+          const nx=x/W;
+          // envelope tapers the ends so it looks like a contained voice ribbon
+          const env=Math.sin(nx*Math.PI);
+          const y=midY + env*amp*H*0.34*(
+            Math.sin(nx*7 - t*2 + li*1.7)*0.6 +
+            Math.sin(nx*13 + t*1.3 + li)*0.4);
+          x===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+        }
+        ctx.strokeStyle=c; ctx.lineWidth=3-li*0.6;
+        ctx.globalAlpha=0.85-li*0.18;
+        ctx.shadowColor=c; ctx.shadowBlur=14; ctx.stroke();
+      });
+    } else {
+      // listening: a soft breathing orb with orbiting dots
+      const pulse=0.5+Math.sin(t*1.4)*0.5;
+      const R=18+pulse*10 + amp*40;
+      const g=ctx.createRadialGradient(W/2,midY,2,W/2,midY,R);
+      g.addColorStop(0,'rgba(95,212,208,0.9)');
+      g.addColorStop(0.5,'rgba(41,121,255,0.5)');
+      g.addColorStop(1,'rgba(41,121,255,0)');
+      ctx.globalAlpha=1; ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(W/2,midY,R,0,7); ctx.fill();
+      // orbiting particles
+      for(let i=0;i<3;i++){
+        const a=t*1.2 + i*2.09;
+        const ox=W/2+Math.cos(a)*(R+8), oy=midY+Math.sin(a)*(R*0.4+4);
+        ctx.beginPath(); ctx.arc(ox,oy,2.5,0,7);
+        ctx.fillStyle=COLORS[i]; ctx.shadowColor=COLORS[i]; ctx.shadowBlur=10; ctx.fill();
+      }
+    }
+    ctx.globalAlpha=1; ctx.shadowBlur=0; ctx.globalCompositeOperation='source-over';
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+function setIdle(){ stage.classList.remove('speaking'); Bot.speaking=false; auraMode='listening';
   cap.classList.add('idle'); cap.textContent='Listening…'; }
 function addLog(text,who){
   const t=new Date().toTimeString().slice(0,5);
@@ -882,7 +963,7 @@ function connectSSE(){
         cap.classList.add('idle'); cap.textContent='“'+d.text+'”'; }
     }
     else if(d.type==='speech_start'){
-      stage.classList.add('speaking'); Bot.speaking=true;
+      stage.classList.add('speaking'); Bot.speaking=true; auraMode='speaking';
       cap.classList.remove('idle');
       cap.textContent=d.text||''; if(d.text) addLog(d.text,'ben');
     }
@@ -1284,68 +1365,76 @@ const Bot={ speaking:false, setJoint(){}, resize(){} };
   renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   const scene=new THREE.Scene();
   const camera=new THREE.PerspectiveCamera(38,1,.1,100);
-  camera.position.set(0,1.55,5.2); camera.lookAt(0,1.05,0);
-  scene.add(new THREE.AmbientLight(0x8899bb,.55));
-  const key=new THREE.DirectionalLight(0xffffff,.85); key.position.set(3,5,4); scene.add(key);
-  const rim=new THREE.PointLight(0x2979FF,1.2,12); rim.position.set(-3,2.2,-2.5); scene.add(rim);
+  camera.position.set(0,2.0,6.0); camera.lookAt(0,1.5,0);
+  scene.add(new THREE.AmbientLight(0x9aa8c8,.72));
+  const key=new THREE.DirectionalLight(0xffffff,.95); key.position.set(3,6,5); scene.add(key);
+  const fill=new THREE.DirectionalLight(0xbcd0ff,.4); fill.position.set(-4,3,4); scene.add(fill);
+  const rim=new THREE.PointLight(0x2979FF,1.1,14); rim.position.set(-3,2.4,-3); scene.add(rim);
 
-  const M={
-    body: new THREE.MeshStandardMaterial({color:0xE9EDF2,metalness:.25,roughness:.35}), // white shell like real Ben
-    blue: new THREE.MeshStandardMaterial({color:0x1B4FD8,metalness:.5,roughness:.35}),
-    dark: new THREE.MeshStandardMaterial({color:0x14161C,metalness:.6,roughness:.5}),
-    glow: new THREE.MeshStandardMaterial({color:0x2979FF,emissive:0x2979FF,emissiveIntensity:.55,metalness:.2,roughness:.35}),
-    visor:new THREE.MeshStandardMaterial({color:0x05070C,metalness:.85,roughness:.18}),
-  };
-  const box=(w,h,d,m)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);
-  const cyl=(rt,rb,h,m,seg=20)=>new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),m);
-  const sph=(r,m)=>new THREE.Mesh(new THREE.SphereGeometry(r,20,16),m);
-
+  // ── Load the real Ben model (GLB) ──────────────────────
   const robot=new THREE.Group(); scene.add(robot);
-  /* skirt base like the real Ben (cone body) */
-  const skirt=cyl(.42,.78,1.1,M.body,28); skirt.position.y=.55; robot.add(skirt);
-  const baseRing=cyl(.8,.84,.12,M.glow,28); baseRing.position.y=.06; robot.add(baseRing);
-  /* torso */
-  const torso=cyl(.36,.42,.9,M.blue,24); torso.position.y=1.55; robot.add(torso);
-  const chest=box(.5,.34,.16,M.body); chest.position.set(0,1.66,.3); robot.add(chest);
-  const tray=box(1.15,.06,.5,M.body); tray.position.set(0,1.28,.3); robot.add(tray);
-  /* head */
-  const headGrp=new THREE.Group(); headGrp.position.set(0,2.12,0); robot.add(headGrp);
-  const neck=cyl(.09,.11,.16,M.dark); neck.position.y=-.06; headGrp.add(neck);
-  const head=sph(.34,M.body); head.scale.y=1.08; head.position.y=.3; headGrp.add(head);
-  const visor=box(.4,.26,.06,M.visor); visor.position.set(0,.32,.3); headGrp.add(visor);
-  /* arms */
-  function buildArm(side){
-    const shoulder=new THREE.Group();
-    shoulder.position.set(side*.48,1.86,0); robot.add(shoulder);
-    shoulder.add(sph(.1,M.body));
-    const upper=cyl(.07,.065,.5,M.body); upper.position.y=-.25; shoulder.add(upper);
-    const elbow=new THREE.Group(); elbow.position.y=-.5; shoulder.add(elbow);
-    elbow.add(sph(.075,M.blue));
-    const fore=cyl(.06,.055,.44,M.body); fore.position.y=-.22; elbow.add(fore);
-    const wrist=new THREE.Group(); wrist.position.y=-.44; elbow.add(wrist);
-    const palm=box(.12,.16,.08,M.dark); palm.position.y=-.08; wrist.add(palm);
-    const fingers=box(.11,.11,.07,M.body); fingers.position.y=-.2; wrist.add(fingers);
-    elbow.rotation.x=-.2;
-    return {shoulder,elbow,wrist,fingers};
-  }
-  const arms={ left:buildArm(1), right:buildArm(-1) };
+  let headNode=null, ledMat=null;
+  let eyeTarget=new THREE.Color(0x2979FF), blinkT=0;
 
-  const SMID=(SERVO_MIN+SERVO_MAX)/2;
-  const t=v=>(v-SMID)/(SERVO_MAX-SMID), rad=d=>d*Math.PI/180;
-  const pose={left:{shoulder:0,lateral:0,elbow:-.2,wrist:0,curl:0},
-              right:{shoulder:0,lateral:0,elbow:-.2,wrist:0,curl:0}, headYaw:0};
-  function setOne(p,part,v){
-    if(part==='shoulder') p.shoulder=rad(-t(v)*90);
-    else if(part==='lateral') p.lateral=rad(t(v)*80);
-    else if(part==='elbow'||part==='forearm') p.elbow=rad(-(v/SERVO_MAX)*115);
-    else if(part==='wrist') p.wrist=rad(t(v)*80);
-    else if(FINGER_PARTS.includes(part)) p.curl=v/FINGER_MAX;
-  }
+  const loader=new THREE.GLTFLoader();
+  loader.load('/display/ben_model.glb', (gltf)=>{
+    const m=gltf.scene;
+    robot.add(m);
+    // auto-fit: measure the model, recenter to origin, scale to a target height
+    const bbox=new THREE.Box3().setFromObject(m);
+    const size=new THREE.Vector3(); bbox.getSize(size);
+    const center=new THREE.Vector3(); bbox.getCenter(center);
+    const TARGET_H=3.0;                       // desired on-screen height (units)
+    const s=TARGET_H/(size.y||1);
+    m.scale.setScalar(s);
+    // after scaling, recenter horizontally and stand it on the podium
+    m.position.set(-center.x*s, -bbox.min.y*s, -center.z*s);
+    // frame the camera on the model
+    camera.position.set(0, TARGET_H*0.55, TARGET_H*1.75);
+    camera.lookAt(0, TARGET_H*0.5, 0);
+    camera.updateProjectionMatrix();
+    // grab named parts: head turns, face_leds recolor. Colors are baked
+    // into the model per zone — we keep them and just set finish.
+    m.traverse(o=>{
+      if(!o.isMesh) return;
+      o.material=o.material.clone();
+      const n=(o.name||'').toLowerCase();
+      if(n.includes('head')) headNode=o;
+      if(n.includes('led')||n.includes('face')){
+        o.material.emissive=new THREE.Color(0x2979FF);
+        o.material.emissiveIntensity=1.4;
+        ledMat=o.material;
+      } else {
+        o.material.vertexColors=true;           // use baked zone colors
+        o.material.metalness=0.35;
+        o.material.roughness=0.45;
+      }
+    });
+    $('#stage-hint').textContent='DRAG TO ROTATE';
+  }, undefined, (err)=>{
+    console.error('model load failed', err);
+    $('#stage-hint').textContent='model failed to load';
+  });
+
+  // ── control hooks (head + eyes live; arms static on real model) ──
+  const rad=d=>d*Math.PI/180;
+  const pose={headYaw:0};
   Bot.setJoint=(part,v,h)=>{
-    if(part==='head'){ pose.headYaw=rad(t(v)*70); return; }
-    if(h==='both'){ setOne(pose.left,part,v); setOne(pose.right,part,v); }
-    else setOne(pose[h]||pose.left,part,v);
+    if(part==='head'){ pose.headYaw=rad(((v-1000)/1000)*45); }
+    // arms are fused in the CAD → not articulated on the real model
   };
+  let driveDir='stop';
+  Bot.setDrive=(dir)=>{ driveDir=dir||'stop'; };
+  const EYE_HEX={blue:0x2979FF,green:0x22C55E,red:0xEF4444,white:0xEAF0FA,
+                 yellow:0xFFD166,purple:0xA855F7,cyan:0x5FD4D0,off:0x111820};
+  Bot.setEyeColor=(c)=>{
+    let hex=(typeof c==='number')?c
+      :EYE_HEX[(c||'').toLowerCase()] ?? (/^#?[0-9a-f]{6}$/i.test(c||'')
+        ? parseInt(c.replace('#',''),16) : 0x2979FF);
+    eyeTarget=new THREE.Color(hex);
+  };
+
+
 
   let dragging=false,lastX=0,userYaw=0,idleAt=0;
   canvas.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;});
@@ -1362,30 +1451,39 @@ const Bot={ speaking:false, setJoint(){}, resize(){} };
   Bot.resize=resize; addEventListener('resize',resize); resize();
 
   const lerp=(a,b,k)=>a+(b-a)*k;
+  let leanZ=0, leanX=0, dt=performance.now();
   renderer.setAnimationLoop(()=>{
-    const T=performance.now()/1000;
+    const now=performance.now(); const T=now/1000;
+    const d=Math.min(.05,(now-dt)/1000); dt=now;
     if(!dragging && performance.now()>idleAt) userYaw+=.0022;
     robot.rotation.y=userYaw;
     robot.position.y=Math.sin(T*1.2)*.02;
-    const nod=Bot.speaking?Math.sin(T*9)*.05:0;
-    headGrp.rotation.y=lerp(headGrp.rotation.y,pose.headYaw,.15);
-    headGrp.rotation.x=lerp(headGrp.rotation.x,nod,.2);
-    M.glow.emissiveIntensity=Bot.speaking?.85+Math.sin(T*10)*.45:.5+Math.sin(T*2)*.1;
-    for(const k of ['left','right']){
-      const a=arms[k],p=pose[k],mir=(k==='left'?1:-1);
-      a.shoulder.rotation.x=lerp(a.shoulder.rotation.x,p.shoulder,.15);
-      a.shoulder.rotation.z=lerp(a.shoulder.rotation.z,mir*-p.lateral,.15);
-      a.elbow.rotation.x=lerp(a.elbow.rotation.x,p.elbow,.15);
-      a.wrist.rotation.y=lerp(a.wrist.rotation.y,p.wrist,.15);
-      const s=1-.45*p.curl;
-      a.fingers.scale.set(1,s,1); a.fingers.position.y=-.2+.03*p.curl;
+
+    /* drive lean */
+    let tZ=0, tX=0;
+    if(driveDir==='forward') tX=.05;
+    else if(driveDir==='backward') tX=-.045;
+    else if(driveDir==='left') tZ=.045;
+    else if(driveDir==='right') tZ=-.045;
+    leanX=lerp(leanX,tX,.12); leanZ=lerp(leanZ,tZ,.12);
+    robot.rotation.x=leanX; robot.rotation.z=leanZ;
+
+    /* eyes: recolor + blink + brighten while speaking */
+    if(ledMat){
+      ledMat.emissive.lerp(eyeTarget,.12);
+      ledMat.emissiveIntensity=Bot.speaking?1.6+Math.sin(T*10)*.5:1.3;
+      blinkT-=d; if(blinkT<-3) blinkT=.14;
+    }
+
+    /* head turn (+ talking nod) */
+    if(headNode){
+      const nod=Bot.speaking?Math.sin(T*9)*.04:0;
+      headNode.rotation.y=lerp(headNode.rotation.y,pose.headYaw,.15);
+      headNode.rotation.x=lerp(headNode.rotation.x,nod,.2);
     }
     renderer.render(scene,camera);
   });
 })();
 </script>
-
-
-
 </body>
 </html>

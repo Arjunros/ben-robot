@@ -313,6 +313,14 @@ def init_display(app):
     def display_three():
         return send_from_directory(_BASE_DIR, "three.min.js")
 
+    @app.route("/display/GLTFLoader.js")
+    def display_gltfloader():
+        return send_from_directory(_BASE_DIR, "GLTFLoader.js")
+
+    @app.route("/display/ben_model.glb")
+    def display_benmodel():
+        return send_from_directory(_BASE_DIR, "ben_model.glb")
+
     @app.route("/display/logo.png")
     def display_logo():
         # optional — drop your Technovation logo.png next to display.html
@@ -880,7 +888,6 @@ def init_display(app):
             if os.path.isfile(p):
                 return send_file(p)
         return {"status": "error", "message": "no photo"}, 404
-    
 
     _registered = True
     print("[DISPLAY] Routes ready at /display")
