@@ -40,7 +40,7 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Wi-Fi client interface (internet). The AP interface is never touched.
 #   Jetson: internal card  = "wlP1p1s0"
 #   Raspberry Pi: usually  = "wlan0"     <-- change this per robot
-WIFI_CLIENT_IFACE = "wlP1p1s0"
+WIFI_CLIENT_IFACE = "wlan0"
 _subscribers = []
 _lock = threading.Lock()
 
