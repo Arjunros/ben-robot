@@ -26,7 +26,8 @@ input,textarea{user-select:text;-webkit-user-select:text}
 /* ═══ Top bar ═══ */
 #topbar{height:var(--topbar);display:flex;align-items:center;gap:12px;padding:0 18px}
 #logo{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.14em;font-size:1.05rem}
-#logo img{height:30px;display:block}
+#logo img{height:36px;max-width:110px;object-fit:contain;display:block;
+  background:#fff;border-radius:9px;padding:3px 8px}
 #logo .tn{text-transform:uppercase}
 #logo .tn b{color:var(--blue)}
 #topbar .grow{flex:1}
@@ -180,7 +181,7 @@ textarea.field{min-height:84px;resize:none}
 #dpad-center{position:absolute;inset:26%;border-radius:50%;background:#000;border:none;
   display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;letter-spacing:.1em}
 #dpad-center:active{color:var(--red)}
-#dpad-center img{height:56%;pointer-events:none}
+
 .arrow{position:absolute;font-size:1.5rem;color:#2B2B2B;pointer-events:none}
 .arrow.up{top:6%;left:50%;transform:translateX(-50%)}
 .arrow.down{bottom:6%;left:50%;transform:translateX(-50%)}
@@ -273,6 +274,7 @@ textarea.field{min-height:84px;resize:none}
 .modal .stack{display:flex;flex-direction:column;gap:12px}
 .modal .row2{display:flex;gap:12px;margin-top:18px}
 .kv{display:flex;justify-content:space-between;font-size:.95rem;margin:4px 0}
+#wifi-modal .kv b{padding-right:34px}
 .kv b{font-weight:400;color:var(--muted)}
 .hint{font-size:.78rem;color:var(--muted);margin:4px 2px 0}
 #notice-check{width:74px;height:74px;margin:6px auto 14px;border-radius:50%;
@@ -298,6 +300,18 @@ textarea.field{min-height:84px;resize:none}
 .gk-row button.wide{max-width:none;flex:2.4;font-size:.9rem}
 .gk-row button.act{background:var(--blue)}
 .gk-row button.on{background:var(--blue)}
+.vtrig{font-size:.78rem;color:var(--cyan,#5FD4D0);font-weight:600;cursor:pointer}
+.vtrig.unset{color:var(--muted);font-weight:400}
+.face-row .capbtn{border:none;border-radius:12px;min-width:52px;min-height:52px;
+  background:rgba(255,255,255,.08);color:#fff;font-size:1.25rem;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.face-row .capbtn:active{background:var(--blue)}
+#cap-view{position:fixed;inset:0;background:rgba(5,7,12,.92);z-index:75;display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:18px}
+#cap-view.open{display:flex}
+#cap-img{max-width:92%;max-height:70%;border-radius:18px;background:#000;
+  box-shadow:0 10px 50px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.1)}
+#cap-bar{display:flex;gap:10px}
 #toast{position:fixed;bottom:calc(var(--tabbar) + 12px);left:50%;transform:translateX(-50%) translateY(90px);
   background:rgba(28,33,56,.8);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;border-radius:999px;padding:11px 22px;font-size:.85rem;
   transition:transform .25s;z-index:55;box-shadow:0 6px 20px rgba(0,0,0,.5)}
@@ -339,7 +353,6 @@ textarea.field{min-height:84px;resize:none}
 <header id="topbar">
   <div id="logo">
     <img src="/display/logo.png" alt="" onerror="this.style.display='none'">
-    <span class="tn">T<b>Ξ</b>chnovation</span>
   </div>
   <div class="grow"></div>
   <div id="batt">
@@ -390,8 +403,7 @@ textarea.field{min-height:84px;resize:none}
           </div>
           <span class="arrow up">▲</span><span class="arrow down">▼</span>
           <span class="arrow left">◀</span><span class="arrow right">▶</span>
-          <button id="dpad-center" onclick="api('/move?dir=stop');Bot.setDrive('stop')">
-            <img src="/display/logo.png" alt="" onerror="this.remove();this.parentElement.textContent='STOP'">
+          <button id="dpad-center" onclick="api('/move?dir=stop');Bot.setDrive('stop')">STOP
           </button>
         </div>
       </div>
@@ -493,7 +505,8 @@ textarea.field{min-height:84px;resize:none}
         Upload video
         <input type="file" id="vfile" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.m4v" hidden>
       </label>
-      <span id="upload-hint">MP4 or WebM play best · uploads also work from your phone at this address</span>
+      <input class="field" id="vtrigger" placeholder="Trigger word (optional) — say “play a video on …”" style="max-width:340px">
+      <span id="upload-hint">MP4 or WebM play best</span>
       <span id="upload-prog" class="mono"></span>
     </div>
     <div id="online-row">
@@ -551,8 +564,9 @@ textarea.field{min-height:84px;resize:none}
 <!-- ═══ WiFi settings modal ═══ -->
 <div class="modal" id="wifi-modal"><div class="box">
   <button class="x" onclick="closeModal('wifi-modal')">✕</button>
-  <div class="kv"><span>Factory Username:</span><b>Techperson</b></div>
-  <div class="kv"><span>Factory Password:</span><b>Tech@23456</b></div>
+  <div class="kv"><span>Factory Network:</span><b>BenRobot</b></div>
+  <div class="kv"><span>Factory Password:</span><b>ben@1234</b></div>
+  <div class="kv"><span>Robot Address:</span><b>192.168.4.1 · fixed</b></div>
   <div class="label" style="margin-top:14px">New Wifi Username</div>
   <input class="field" id="wifi-ssid" placeholder="technovation">
   <div class="label" style="margin-top:12px">New Wifi Password</div>
@@ -652,6 +666,29 @@ textarea.field{min-height:84px;resize:none}
   <div id="gkbd-keys"></div>
 </div>
 
+<!-- ═══ Trigger word modal ═══ -->
+<div class="modal" id="trig-modal">
+  <div class="box">
+    <h3>Trigger word</h3>
+    <p class="sub">Say “Ben, play a video on <b>this word</b>” to play it.</p>
+    <input class="field" id="trig-input" placeholder="e.g. drilling machine">
+    <div class="mrow">
+      <button class="pill-btn outline grow" onclick="closeModal('trig-modal')">Cancel</button>
+      <button class="pill-btn blue grow" onclick="saveTrigger()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Camera capture (Vision AI) ═══ -->
+<div id="cap-view">
+  <img id="cap-img" alt="">
+  <div id="cap-bar">
+    <button class="pill-btn outline" onclick="closeCapture()">Cancel</button>
+    <button class="pill-btn outline" onclick="capShoot()">Retake</button>
+    <button class="pill-btn blue" onclick="capUse()">Use Photo</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -691,13 +728,22 @@ document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
 
 /* ═════════ top-bar actions ═════════ */
 function doEstop(){ api('/estop'); closeModal('power-modal'); toast('EMERGENCY STOP'); }
-function uploadWifi(){
+async function uploadWifi(){
   const ssid=$('#wifi-ssid').value.trim(), pass=$('#wifi-pass').value;
   if(!ssid){ toast('Enter a WiFi name'); return; }
   if(pass.length<8){ toast('Password needs 8+ characters'); return; }
-  api('/settings?wifi_ssid='+encodeURIComponent(ssid)+'&wifi_password='+encodeURIComponent(pass));
-  closeModal('wifi-modal');
-  notice('Network updating','Please reconnect using the updated network details.');
+  try{
+    const r=await fetch(API+'/display/ap_update?ssid='+encodeURIComponent(ssid)
+        +'&password='+encodeURIComponent(pass));
+    const d=await r.json();
+    if(r.ok){
+      closeModal('wifi-modal');
+      $('#wifi-ssid').value=''; $('#wifi-pass').value='';
+      notice('Hotspot updated', d.applied
+        ? ('New network "'+ssid+'" is starting — reconnect your phone to it.')
+        : ('Saved. "'+ssid+'" will be used next time the hotspot starts.'));
+    }else toast(d.message||'Update failed');
+  }catch{ toast('Update failed'); }
 }
 
 /* ═════════ motion ═════════ */
@@ -846,6 +892,7 @@ function addFaceRow(id){
   const row=document.createElement('div'); row.className='face-row'; row.dataset.id=rid;
   row.innerHTML=`<label class="upbtn">⇪ Upload Face ${$('#face-rows').children.length+1}
       <input type="file" accept="image/*" hidden></label>
+    <button class="capbtn" title="Take photo">📷</button>
     <input class="field" placeholder="Type here...">
     <button class="delbtn">🗑</button>`;
   const fileIn=row.querySelector('input[type=file]'), upbtn=row.querySelector('.upbtn');
@@ -856,6 +903,7 @@ function addFaceRow(id){
       upbtn.firstChild.textContent='✓ Face ready '; };
     rd.readAsDataURL(f);
   });
+  row.querySelector('.capbtn').onclick=()=>openCapture(row);
   row.querySelector('.delbtn').onclick=()=>{ faceRemoved.add(rid); row.remove(); };
   $('#face-rows').appendChild(row);
 }
@@ -873,6 +921,60 @@ function saveFaces(){
   toast('Faces uploaded');
 }
 addFaceRow(); addFaceRow(); addFaceRow();
+
+/* ═════════ video trigger editing ═════════ */
+let trigName='';
+function openTrigger(name,current){
+  trigName=name;
+  $('#trig-input').value=current||'';
+  openModal('trig-modal');
+}
+function saveTrigger(){
+  const t=$('#trig-input').value.trim();
+  api('/display/video_trigger?name='+encodeURIComponent(trigName)
+      +'&trigger='+encodeURIComponent(t));
+  closeModal('trig-modal');
+  toast(t?('Trigger set: '+t):'Trigger cleared');
+  setTimeout(loadVideos,300);
+}
+
+/* ═════════ Vision AI camera capture ═════════ */
+let capRow=null, capBlob=null;
+function openCapture(row){
+  capRow=row;
+  $('#cap-view').classList.add('open');
+  capShoot();
+}
+async function capShoot(){
+  const img=$('#cap-img');
+  img.src='';
+  try{
+    const r=await fetch(API+'/display/cam_snap?t='+Date.now());
+    if(!r.ok) throw 0;
+    capBlob=await r.blob();
+    img.src=URL.createObjectURL(capBlob);
+  }catch{ toast('Camera unavailable'); closeCapture(); }
+}
+function capUse(){
+  if(!capRow||!capBlob){ closeCapture(); return; }
+  const rd=new FileReader();
+  rd.onload=()=>{
+    capRow.dataset.face=rd.result;
+    const up=capRow.querySelector('.upbtn');
+    up.classList.add('done');
+    up.firstChild.textContent='✓ Photo ready ';
+    closeCapture();
+    toast('Photo captured');
+  };
+  rd.readAsDataURL(capBlob);
+}
+function closeCapture(){
+  $('#cap-view').classList.remove('open');
+  const img=$('#cap-img');
+  if(img.src) URL.revokeObjectURL(img.src);
+  img.removeAttribute('src');
+  capRow=null; capBlob=null;
+}
 
 /* ═════════ status / clock / settings load ═════════ */
 async function poll(){
@@ -955,7 +1057,8 @@ let auraMode='listening';   // 'listening' | 'speaking'
     ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(cx,cy,haloR,0,7); ctx.fill();
 
     // three morphing blobs orbiting = the fluid core (Apple-Intelligence feel)
-    const blobs=[[R,G,B],[Math.min(255,R+40),Math.min(255,G+80),B],[R,Math.min(255,G+60),Math.min(255,B)]];
+    // Ben's signature tri-color: blue / teal / violet (Siri-style, our palette)
+    const blobs=[[41,121,255],[95,212,208],[168,92,246]];
     blobs.forEach((col,i)=>{
       const ph=t*0.7+i*2.094;
       const wob=1+Math.sin(t*2+i)*0.06*(0.4+amp);
@@ -1047,9 +1150,14 @@ async function loadVideos(){
     list.forEach(v=>{
       const card=document.createElement('div'); card.className='vcard';
       card.innerHTML=`<div class="vname"></div><div class="vmeta">${fmtSize(v.size)}</div>
+        <div class="vtrig"></div>
         <div class="vrow"><button class="pill-btn blue">Play</button>
         <button class="pill-btn outline red">Delete</button></div>`;
       card.querySelector('.vname').textContent=v.name;
+      const tr=card.querySelector('.vtrig');
+      tr.textContent=v.trigger?('🎯 '+v.trigger):'🎯 set trigger word';
+      tr.classList.toggle('unset',!v.trigger);
+      tr.onclick=()=>openTrigger(v.name,v.trigger||'');
       const [play,del]=card.querySelectorAll('button');
       play.onclick=()=>api('/display/play?name='+encodeURIComponent(v.name));
       del.onclick=()=>confirmAct('Delete this video?',v.name,
@@ -1061,12 +1169,14 @@ async function loadVideos(){
 $('#vfile').addEventListener('change',()=>{
   const f=$('#vfile').files[0]; if(!f) return;
   const fd=new FormData(); fd.append('video',f);
+  const tg=$('#vtrigger').value.trim();
+  if(tg) fd.append('trigger',tg);
   const xhr=new XMLHttpRequest();
   xhr.open('POST',API+'/display/upload_video');
   xhr.upload.onprogress=e=>{ if(e.lengthComputable)
     $('#upload-prog').textContent='Uploading '+Math.round(e.loaded/e.total*100)+'%'; };
   xhr.onload=()=>{ $('#upload-prog').textContent='';
-    if(xhr.status===200){ toast('Video uploaded'); loadVideos(); }
+    if(xhr.status===200){ toast('Video uploaded'); $('#vtrigger').value=''; loadVideos(); }
     else{ let m='Upload failed'; try{ m=JSON.parse(xhr.responseText).message||m; }catch{}
       toast(m); } };
   xhr.onerror=()=>{ $('#upload-prog').textContent=''; toast('Upload failed — check connection'); };

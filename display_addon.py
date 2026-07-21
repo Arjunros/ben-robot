@@ -40,7 +40,14 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Wi-Fi client interface (internet). The AP interface is never touched.
 #   Jetson: internal card  = "wlP1p1s0"
 #   Raspberry Pi: usually  = "wlan0"     <-- change this per robot
+# Internet radio (client). "wlan0" = Pi internal WiFi. Auto-detected at
+# runtime if this name doesn't exist on the robot (e.g. Jetson: wlP1p1s0),
+# so the same file works on every unit. The AP dongle is never touched.
 WIFI_CLIENT_IFACE = "wlan0"
+
+# The hotspot's address is FIXED — the phone app depends on it.
+# Enforced on every AP update so NetworkManager can never drift to 10.42.0.1.
+AP_ADDRESS = "192.168.4.1/24"
 _subscribers = []
 _lock = threading.Lock()
 
@@ -289,9 +296,26 @@ def try_video_command(text: str):
             break
     if not query:
         return None
+    import urllib.request
+    import urllib.parse
+    # 1) local videos with a matching trigger word win over online
     try:
-        import urllib.request
-        import urllib.parse
+        with urllib.request.urlopen(
+                "http://127.0.0.1:5000/display/videos", timeout=6) as r:
+            vids = json.loads(r.read())
+        for v in vids:
+            trig = (v.get("trigger") or "").lower()
+            if trig and (trig in query or query in trig):
+                urllib.request.urlopen(
+                    "http://127.0.0.1:5000/display/play?name="
+                    + urllib.parse.quote(v["name"]), timeout=8)
+                print(f"[MEDIA] Voice matched local trigger "
+                      f"'{trig}' -> {v['name']}")
+                return query
+    except Exception as e:
+        print(f"[MEDIA] local trigger check failed: {e}")
+    # 2) otherwise search online as before
+    try:
         url = ("http://127.0.0.1:5000/display/play_online?query="
                + urllib.parse.quote(query))
         urllib.request.urlopen(url, timeout=25)
@@ -377,18 +401,24 @@ def init_display(app):
                     "message": "Use MP4, WebM, OGV, M4V, MOV or MKV"}, 400
         path = os.path.join(videos_dir, name)
         f.save(path)
+        trig = (request.form.get("trigger") or "").strip().lower()
+        if trig:
+            d = _trig_load(); d[name] = trig; _trig_save(d)
         print(f"[MEDIA] Uploaded {name} "
-              f"({os.path.getsize(path) // 1024} KB)")
+              f"({os.path.getsize(path) // 1024} KB)"
+              + (f" trigger='{trig}'" if trig else ""))
         _broadcast({"type": "notice", "text": f"Video added: {name}"})
         return {"status": "ok", "name": name}, 200
 
     @app.route("/display/videos")
     def display_videos():
         out = []
+        trigs = _trig_load()
         for n in sorted(os.listdir(videos_dir)):
             p = os.path.join(videos_dir, n)
             if os.path.isfile(p) and os.path.splitext(n)[1].lower() in allowed_ext:
-                out.append({"name": n, "size": os.path.getsize(p)})
+                out.append({"name": n, "size": os.path.getsize(p),
+                            "trigger": trigs.get(n, "")})
         return json.dumps(out), 200, {"Content-Type": "application/json"}
 
     @app.route("/display/video/<path:name>")
@@ -405,6 +435,9 @@ def init_display(app):
         path = os.path.join(videos_dir, name) if name else None
         if path and os.path.isfile(path):
             os.remove(path)
+            d = _trig_load()
+            if name in d:
+                d.pop(name); _trig_save(d)
             print(f"[MEDIA] Deleted {name}")
         return {"status": "ok"}, 200
 
@@ -505,11 +538,38 @@ def init_display(app):
             return second
         return first
 
+    def _client_iface():
+        """The WiFi device used for internet. Prefers WIFI_CLIENT_IFACE if
+        it exists; otherwise picks a wifi device that is NOT the AP."""
+        try:
+            r = _nmcli(["-t", "-f", "DEVICE,TYPE", "device"], timeout=8)
+            devs = [l.split(":")[0] for l in (r.stdout or "").splitlines()
+                    if l.endswith(":wifi")]
+            if WIFI_CLIENT_IFACE in devs:
+                return WIFI_CLIENT_IFACE
+            # exclude whichever device the AP profile is running on
+            act = _nmcli(["-t", "-f", "NAME,DEVICE",
+                          "connection", "show", "--active"], timeout=8)
+            ap_devs = set()
+            for line in (act.stdout or "").splitlines():
+                parts = line.rsplit(":", 1)
+                if len(parts) == 2:
+                    m = _nmcli(["-t", "-f", "802-11-wireless.mode",
+                                "connection", "show", parts[0]], timeout=6)
+                    if (m.stdout or "").strip().endswith("ap"):
+                        ap_devs.add(parts[1])
+            for d in devs:
+                if d not in ap_devs:
+                    return d
+            return devs[0] if devs else WIFI_CLIENT_IFACE
+        except Exception:
+            return WIFI_CLIENT_IFACE
+
     @app.route("/display/wifi_scan")
     def display_wifi_scan():
         try:
             r = _nmcli(["-t", "-f", "SSID,SIGNAL,SECURITY",
-                        "dev", "wifi", "list", "ifname", WIFI_CLIENT_IFACE,
+                        "dev", "wifi", "list", "ifname", _client_iface(),
                         "--rescan", "yes"], timeout=25)
         except Exception as e:
             return {"status": "error", "message": str(e)}, 500
@@ -560,7 +620,7 @@ def init_display(app):
         if not ssid:
             return {"status": "error", "message": "No network name"}, 400
         args = ["dev", "wifi", "connect", ssid,
-                "ifname", WIFI_CLIENT_IFACE]
+                "ifname", _client_iface()]
         if pwd:
             args += ["password", pwd]
         try:
@@ -586,7 +646,7 @@ def init_display(app):
             _wt.sleep(3)
             try:
                 st = _nmcli(["-t", "-f", "ACTIVE,SSID", "dev", "wifi",
-                             "ifname", WIFI_CLIENT_IFACE], timeout=8)
+                             "ifname", _client_iface()], timeout=8)
                 for line in st.stdout.splitlines():
                     if (line.startswith("yes:")
                             and line[4:].replace("\\:", ":") == ssid):
@@ -606,7 +666,7 @@ def init_display(app):
         ssid = ""
         try:
             r = _nmcli(["-t", "-f", "ACTIVE,SSID",
-                        "dev", "wifi", "ifname", WIFI_CLIENT_IFACE], timeout=8)
+                        "dev", "wifi", "ifname", _client_iface()], timeout=8)
             for line in r.stdout.splitlines():
                 if line.startswith("yes:"):
                     ssid = line[4:].replace("\\:", ":")
@@ -814,6 +874,133 @@ def init_display(app):
         except Exception:
             pass
         return {"status": "ok"}, 200
+
+    # ── local video trigger words ───────────────────────────
+    TRIGGERS_FILE = os.path.join(_BASE_DIR, "video_triggers.json")
+
+    def _trig_load():
+        try:
+            with open(TRIGGERS_FILE) as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except Exception:
+            return {}
+
+    def _trig_save(d):
+        try:
+            with open(TRIGGERS_FILE, "w") as f:
+                json.dump(d, f, indent=2)
+        except Exception as e:
+            print(f"[VIDEO] trigger save error: {e}")
+
+    @app.route("/display/video_trigger")
+    def display_video_trigger():
+        name = (request.args.get("name") or "").strip()
+        trig = (request.args.get("trigger") or "").strip().lower()
+        if not name:
+            return {"status": "error", "message": "name required"}, 400
+        d = _trig_load()
+        if trig:
+            d[name] = trig
+        else:
+            d.pop(name, None)
+        _trig_save(d)
+        print(f"[VIDEO] trigger for '{name}' -> '{trig or '(cleared)'}'")
+        return {"status": "ok"}, 200
+
+    # ── camera snapshot (for Vision AI face capture) ─────────
+    @app.route("/display/cam_snap")
+    def display_cam_snap():
+        from flask import Response
+        # if the tracker is running it owns the camera — reuse its frame
+        try:
+            import face_tracker
+            if face_tracker.is_enabled():
+                f = face_tracker.get_jpeg()
+                if f:
+                    return Response(f, mimetype="image/jpeg")
+        except Exception:
+            pass
+        try:
+            import cv2
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                return {"status": "error", "message": "camera unavailable"}, 503
+            ok = False
+            for _ in range(4):          # warm-up frames for exposure
+                ok, frame = cap.read()
+            cap.release()
+            if not ok:
+                return {"status": "error", "message": "no frame"}, 503
+            ok2, buf = cv2.imencode(".jpg", frame,
+                                    [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if not ok2:
+                return {"status": "error", "message": "encode failed"}, 500
+            return Response(buf.tobytes(), mimetype="image/jpeg")
+        except Exception as e:
+            return {"status": "error", "message": str(e)}, 500
+
+    def _find_ap_profile():
+        """Return the name of the NetworkManager profile in AP mode."""
+        r = _nmcli(["-t", "-f", "NAME", "connection", "show"], timeout=10)
+        for name in (r.stdout or "").splitlines():
+            name = name.strip()
+            if not name:
+                continue
+            m = _nmcli(["-t", "-f", "802-11-wireless.mode",
+                        "connection", "show", name], timeout=8)
+            if (m.stdout or "").strip().endswith(":ap") or \
+               (m.stdout or "").strip() == "ap":
+                return name
+        return None
+
+    @app.route("/display/ap_update")
+    def display_ap_update():
+        ssid = (request.args.get("ssid") or "").strip()
+        pwd  = request.args.get("password") or ""
+        if not ssid:
+            return {"status": "error", "message": "Network name required"}, 400
+        if len(pwd) < 8:
+            return {"status": "error",
+                    "message": "Password needs 8+ characters"}, 400
+        ap = _find_ap_profile()
+        if not ap:
+            return {"status": "error",
+                    "message": "No hotspot profile found on this robot"}, 404
+        r1 = _nmcli(["connection", "modify", ap,
+                     "802-11-wireless.ssid", ssid], timeout=15)
+        r2 = _nmcli(["connection", "modify", ap,
+                     "wifi-sec.psk", pwd], timeout=15)
+        # pin the fixed hotspot address — phone app depends on 192.168.4.1
+        r3 = _nmcli(["connection", "modify", ap,
+                     "ipv4.method", "shared",
+                     "ipv4.addresses", AP_ADDRESS], timeout=15)
+        if r1.returncode != 0 or r2.returncode != 0 or r3.returncode != 0:
+            err = (r1.stderr + r2.stderr + r3.stderr).strip()[:140]
+            return {"status": "error", "message": err or "nmcli failed"}, 500
+        # persist so factory reset / boot flows use the new values
+        try:
+            from settings import load_settings, save_settings
+            s = load_settings()
+            s["wifi_ssid"] = ssid
+            s["wifi_password"] = pwd
+            save_settings(s)
+        except Exception as e:
+            print(f"[AP] settings persist skipped: {e}")
+        # restart the AP only if it is running right now (on a single-radio
+        # Pi the hotspot may be off while wlan0 is on the internet — then
+        # the new name simply applies the next time the hotspot starts)
+        act = _nmcli(["-t", "-f", "NAME", "connection", "show", "--active"],
+                     timeout=10)
+        applied = ap in (act.stdout or "")
+        if applied:
+            def bounce():
+                _nmcli(["connection", "down", ap], timeout=20)
+                _nmcli(["connection", "up", ap], timeout=30)
+                print(f"[AP] Hotspot '{ap}' restarted as SSID '{ssid}'")
+            threading.Thread(target=bounce, daemon=True).start()
+        print(f"[AP] '{ap}' -> SSID '{ssid}' (applied now: {applied})")
+        return {"status": "ok", "profile": ap, "applied": applied}, 200
 
     @app.route("/display/say", methods=["POST"])
     def display_say():

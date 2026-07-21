@@ -58,14 +58,12 @@ def qa_mode():
     wav_q = record_audio(duration=5)
     question = transcribe(wav_q)
     print(f"[QUESTION] {question!r}")
-
     # -- Show the question on the display ------------------
     if question:
         try:
             from display_addon import notify_display
             notify_display("question", question)
         except: pass
-
     if not question:
         set_eye("speaking")
         speak("I did not catch that.")
@@ -81,7 +79,6 @@ def qa_mode():
             return
     except Exception as e:
         print(f"[REMIND] check failed: {e}")
-
     # -- Voice-triggered video? ("play a video about lions") --
     try:
         from display_addon import try_video_command
@@ -92,17 +89,24 @@ def qa_mode():
             set_eye("idle")
             return
     except: pass
-
     answer = find_answer(question)
     if answer:
         print("[QA] Found in local store")
         set_eye("speaking")
         speak(answer)
     else:
+        # -- AI chat gate: don't call GPT when it's disabled --
+        s = load_settings()
+        if not s.get('chatgpt_enabled', True):
+            print("[QA] Not found locally - AI chat is DISABLED")
+            set_eye("speaking")
+            speak("I don't know that one, and A I chat is turned off. "
+                  "You can enable it from the Speech A I page.")
+            set_eye("idle")
+            return
         print("[QA] Not found locally - asking GPT...")
         set_eye("thinking")
         speak("Let me think about that.")
-        s = load_settings()
         lang = s.get("language", "en")
         answer = ask_gpt(question, language=lang)
         set_eye("speaking")
