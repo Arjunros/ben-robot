@@ -1,6 +1,6 @@
 /*
- * BEN PRO MAX — ESP32-S3 Firmware  (with per-servo MIN/MAX/HOME)
- * Shared I2C: PCA9685 (elbows+fingers) + TF-Luna @0x10
+ * BEN PRO MAX — ESP32-S3 Firmware
+ * I2C: PCA9685 only (elbows+fingers) · TF-Luna on UART2 (GPIO 5/6)
  * Direct servos: lateral L/R, head · BTN7960 motors
  * Latch power · battery monitor (12.8V LiFePO4) · multi-function button
  *
@@ -17,52 +17,18 @@
 #define LATERAL_R_PIN  2
 #define HEAD_LR_PIN    7
 
-// ── I2C (shared: PCA9685 + TF-Luna) ────────────────────────
+// ── I2C (PCA9685 only) ─────────────────────────────────────
 #define I2C_SDA        14
 #define I2C_SCL        21
-#define LUNA_ADDR      0x10
 Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver(0x40);
 #define SERVO_FREQ     50
 #define SERVO_MIN_US   500
 #define SERVO_MAX_US   2400
-#define CH_ELBOW_L     4
-#define CH_ELBOW_R     5
+#define CH_ELBOW_L     7
+#define CH_ELBOW_R     8
 #define CH_FINGER_L    2
 #define CH_FINGER_R    3
-#define NUM_CH         6      // array size must cover highest channel used (5)
-
-// ═══════════════════════════════════════════════════════════
-// ── SERVO LIMITS & HOME POSITIONS (degrees) — TUNE HERE ────
-// App value 0..2000 maps to that servo's MIN..MAX.
-// HOME is where the servo sits at boot, on "HOME", and at shutdown.
-// ═══════════════════════════════════════════════════════════
-// Head (left-right)
-#define HEAD_MIN       30
-#define HEAD_MAX       150
-#define HEAD_HOME      90
-// Elbows
-#define ELBOW_L_MIN    10
-#define ELBOW_L_MAX    170
-#define ELBOW_L_HOME   90
-#define ELBOW_R_MIN    10
-#define ELBOW_R_MAX    170
-#define ELBOW_R_HOME   90
-// Laterals (shoulders) — right side is mirrored automatically
-#define LAT_L_MIN      10
-#define LAT_L_MAX      170
-#define LAT_L_HOME     90
-#define LAT_R_MIN      10
-#define LAT_R_MAX      170
-#define LAT_R_HOME     90
-// Fingers
-#define FING_L_MIN     0
-#define FING_L_MAX     180
-#define FING_L_HOME    90
-#define FING_R_MIN     0
-#define FING_R_MAX     180
-#define FING_R_HOME    90
-// Homing speed (0..100 scale, same as TOPSPEED). Low = slow & gentle.
-#define HOME_SPEED     15
+#define NUM_CH         9     // must cover highest channel used (5)
 
 // ── MOTORS (BTN7960) ───────────────────────────────────────
 #define RPWM_L  35
@@ -76,10 +42,19 @@ Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver(0x40);
 #define MIN_MOVE_PWM   120
 #define MAX_MOVE_PWM   255
 
-// ── PI SERIAL LINK ─────────────────────────────────────────
+// ── PI SERIAL LINK (UART1) ─────────────────────────────────
 #define PI_TX_PIN      18     // → Pi RXD
 #define PI_RX_PIN      17     // ← Pi TXD
 HardwareSerial PiSerial(1);
+
+// ── TF-LUNA UART (UART2) ───────────────────────────────────
+// Luna pin 2 (RXD, blue)  ← ESP32 GPIO 5 (TX)
+// Luna pin 3 (TXD, green) → ESP32 GPIO 6 (RX)
+// Luna pin 5 (config) MUST be left DISCONNECTED for UART mode
+// (if it was grounded for I2C, remove that wire!)
+#define LUNA_TX_PIN    5
+#define LUNA_RX_PIN    6
+HardwareSerial LunaSerial(2);
 
 // ── LATCH + BUTTON ─────────────────────────────────────────
 #define LATCH_PIN      8      // HIGH holds power
@@ -106,6 +81,7 @@ HardwareSerial PiSerial(1);
 #define COOLDOWN_MS    10000
 
 Servo lateralL, lateralR, headServo;
+void processCommand(char* buf);   // fwd declaration
 
 // ── STATE ──────────────────────────────────────────────────
 int  motorSpeed = 255;
@@ -119,34 +95,20 @@ bool robotMoving=false, hardwareEnabled=true, shutdownTriggered=false;
 unsigned long btnPressStart=0;
 bool btnWasPressed=false;
 
-// Per-PCA-channel limits/home (filled in setup from the #defines)
-int chMin[NUM_CH], chMax[NUM_CH], chHome[NUM_CH];
 int chCurrent[NUM_CH];
 int chTarget[NUM_CH];
-int latCurrentL=LAT_L_HOME, latTargetL=LAT_L_HOME;
-int latCurrentR=LAT_R_HOME, latTargetR=LAT_R_HOME;
-int headCurrent=HEAD_HOME,  headTarget=HEAD_HOME;
+int latCurrentL=90, latTargetL=90;
+int latCurrentR=90, latTargetR=90;
+int headCurrent=90, headTarget=90;
 
 float battPinV = 0;
 int   battPercent = 100;
-
-// Homing state: while homing, servo speed is forced to HOME_SPEED,
-// then restored to the user's speed once every joint reaches home.
-bool homingActive = false;
-int  preHomeSpeed = 100;
 
 // ── HELPERS ────────────────────────────────────────────────
 int appSpeedToPWM(int v) {
   v = constrain(v, 0, 200);
   if (v == 0) return 0;
   return map(v, 1, 200, MIN_MOVE_PWM, MAX_MOVE_PWM);
-}
-
-// Map app value 0..2000 into a servo's own [mn..mx] range.
-// Pass mx < mn to get a mirrored (reversed) mapping.
-int mapToRange(int value, int mn, int mx) {
-  value = constrain(value, 0, 2000);
-  return map(value, 0, 2000, mn, mx);
 }
 
 void pcaWriteDeg(int ch, int deg) {
@@ -216,28 +178,28 @@ void updateServos() {
   else if (headCurrent > headTarget) { headCurrent=max(headCurrent-step,headTarget); headServo.write(headCurrent); }
 }
 
-// ── PART → TARGET (0..2000 app value → each servo's MIN..MAX) ──
+// ── PART → TARGET ──────────────────────────────────────────
 void moveServos(const char* part, int value, const char* hand) {
-  // A new position command cancels slow-homing and restores normal speed
-  if (homingActive) finishHoming();
+  value = constrain(value, 0, 2000);
+  int deg = map(value, 0, 2000, 0, 180);
   bool doL = (strcmp(hand,"left")==0  || strcmp(hand,"both")==0);
   bool doR = (strcmp(hand,"right")==0 || strcmp(hand,"both")==0);
 
   if (strcmp(part,"lateral")==0) {
-    if (doL) latTargetL = mapToRange(value, LAT_L_MIN, LAT_L_MAX);
-    if (doR) latTargetR = mapToRange(value, LAT_R_MAX, LAT_R_MIN);  // mirrored — swap MIN/MAX here if direction is wrong
-    Serial.printf("[SERVO] lateral(%s) L=%d R=%d\n", hand, latTargetL, latTargetR);
+    if (doL) latTargetL = deg;
+    if (doR) latTargetR = 180 - deg;      // mirrored — flip if wrong
+    Serial.printf("[SERVO] lateral(%s) -> %d\n", hand, deg);
     return;
   }
   if (strcmp(part,"headLR")==0 || strcmp(part,"head")==0) {
-    headTarget = mapToRange(value, HEAD_MIN, HEAD_MAX);
-    Serial.printf("[SERVO] head -> %d\n", headTarget);
+    headTarget = deg;
+    Serial.printf("[SERVO] head -> %d\n", deg);
     return;
   }
   if (strcmp(part,"elbow")==0) {
-    if (doL) chTarget[CH_ELBOW_L] = mapToRange(value, chMin[CH_ELBOW_L], chMax[CH_ELBOW_L]);
-    if (doR) chTarget[CH_ELBOW_R] = mapToRange(value, chMin[CH_ELBOW_R], chMax[CH_ELBOW_R]);
-    Serial.printf("[SERVO] elbow(%s) -> %d\n", hand, doL ? chTarget[CH_ELBOW_L] : chTarget[CH_ELBOW_R]);
+    if (doL) chTarget[CH_ELBOW_L] = deg;
+    if (doR) chTarget[CH_ELBOW_R] = deg;
+    Serial.printf("[SERVO] elbow(%s) -> %d\n", hand, deg);
     return;
   }
   // fingers / any finger name → the hand's single finger channel
@@ -245,77 +207,27 @@ void moveServos(const char* part, int value, const char* hand) {
       strcmp(part,"thumb")==0 || strcmp(part,"index")==0 ||
       strcmp(part,"middle")==0 || strcmp(part,"ring")==0 ||
       strcmp(part,"pinky")==0) {
-    if (doL) chTarget[CH_FINGER_L] = mapToRange(value, chMin[CH_FINGER_L], chMax[CH_FINGER_L]);
-    if (doR) chTarget[CH_FINGER_R] = mapToRange(value, chMin[CH_FINGER_R], chMax[CH_FINGER_R]);
-    Serial.printf("[SERVO] fingers(%s) -> %d\n", hand, doL ? chTarget[CH_FINGER_L] : chTarget[CH_FINGER_R]);
+    if (doL) chTarget[CH_FINGER_L] = deg;
+    if (doR) chTarget[CH_FINGER_R] = deg;
+    Serial.printf("[SERVO] fingers(%s) -> %d\n", hand, deg);
     return;
   }
   Serial.printf("[IGNORE] %s\n", part);
 }
 
-// ── HOMING ─────────────────────────────────────────────────
-bool servosAtTarget() {
-  for (int ch = 0; ch < NUM_CH; ch++)
-    if (chCurrent[ch] != chTarget[ch]) return false;
-  return latCurrentL==latTargetL && latCurrentR==latTargetR && headCurrent==headTarget;
-}
-
-void finishHoming() {
-  homingActive = false;
-  servoSpeed = preHomeSpeed;        // restore the user's speed
+void homeServos() {
+  for (int ch = 0; ch < NUM_CH; ch++) {
+    chTarget[ch] = 90; chCurrent[ch] = 90; pcaWriteDeg(ch, 90);
+  }
+  latTargetL=latCurrentL=90; lateralL.write(90);
+  latTargetR=latCurrentR=90; lateralR.write(90);
+  headTarget=headCurrent=90; headServo.write(90);
   Serial.println("[SERVO] HOMED");
 }
 
-// Slow, smooth home: set targets and let updateServos() glide there
-// at HOME_SPEED. Speed is restored automatically when done (see loop).
-void homeServos() {
-  for (int ch = 0; ch < NUM_CH; ch++) chTarget[ch] = chHome[ch];
-  latTargetL = LAT_L_HOME;
-  latTargetR = LAT_R_HOME;
-  headTarget = HEAD_HOME;
-  if (!homingActive) { preHomeSpeed = servoSpeed; homingActive = true; }
-  servoSpeed = HOME_SPEED;
-  Serial.println("[SERVO] HOMING (slow)...");
-}
-
-// Instant home — boot only (positions are unknown at power-on,
-// and servos jump to their first command on attach anyway).
-void homeServosInstant() {
-  for (int ch = 0; ch < NUM_CH; ch++) {
-    chTarget[ch] = chCurrent[ch] = chHome[ch];
-    pcaWriteDeg(ch, chHome[ch]);
-  }
-  latTargetL = latCurrentL = LAT_L_HOME; lateralL.write(LAT_L_HOME);
-  latTargetR = latCurrentR = LAT_R_HOME; lateralR.write(LAT_R_HOME);
-  headTarget = headCurrent = HEAD_HOME;  headServo.write(HEAD_HOME);
-  Serial.println("[SERVO] HOMED (boot)");
-}
-
-// Blocking slow home — used by the shutdown paths, which sit in
-// delay() loops where updateServos() would never run otherwise.
-void homeServosBlocking() {
-  homeServos();
-  unsigned long t0 = millis();
-  while (!servosAtTarget() && millis() - t0 < 10000) {
-    updateServos();
-    delay(2);
-  }
-  finishHoming();
-}
-
-// ── TF-LUNA (I2C @0x10) ────────────────────────────────────
-void readLuna() {
-  if (millis() - lastLuna < 100) return;
-  lastLuna = millis();
-
-  Wire.beginTransmission(LUNA_ADDR);
-  Wire.write(0x00);
-  if (Wire.endTransmission(false) != 0) return;
-  Wire.requestFrom((uint8_t)LUNA_ADDR, (uint8_t)2);
-  if (Wire.available() < 2) return;
-  int dist = Wire.read() | (Wire.read() << 8);
-  if (dist <= 0 || dist > 800) return;
-
+// ── TF-LUNA (UART2, 115200 · 9-byte frames @ ~100Hz) ───────
+// Frame: 0x59 0x59 DistL DistH StrL StrH TempL TempH Checksum
+void processDistance(int dist) {
   lunaDistance  = dist;
   obstacleAhead = hardwareEnabled && (dist < OBSTACLE_DIST);
 
@@ -327,6 +239,29 @@ void readLuna() {
       strcmp(currentDir,"stop")==0 && millis()-lastGreeted > COOLDOWN_MS) {
     lastGreeted = millis();
     PiSerial.print("PERSON_DETECTED:"); PiSerial.println(dist);
+  }
+}
+
+void readLuna() {
+  static uint8_t frame[9];
+  static int idx = 0;
+
+  while (LunaSerial.available()) {
+    uint8_t b = LunaSerial.read();
+    if (idx == 0 && b != 0x59) continue;            // hunt for header
+    if (idx == 1 && b != 0x59) { idx = 0; continue; }
+    frame[idx++] = b;
+    if (idx == 9) {
+      idx = 0;
+      uint8_t sum = 0;
+      for (int i = 0; i < 8; i++) sum += frame[i];
+      if (sum != frame[8]) continue;                // bad checksum → drop
+      int dist     = frame[2] | (frame[3] << 8);
+      int strength = frame[4] | (frame[5] << 8);
+      if (dist <= 0 || dist > 800) continue;        // out of range
+      if (strength < 100) continue;                 // unreliable reading
+      processDistance(dist);
+    }
   }
 }
 
@@ -366,7 +301,7 @@ void doLatchShutdown() {
   if (shutdownTriggered) return;
   shutdownTriggered = true;
   Serial.println("[LATCH] Shutdown sequence!");
-  stopMotors(); homeServosBlocking();       // robot parks slowly at home before power-off
+  stopMotors(); homeServos();
   PiSerial.println("SHUTDOWN");
   for (int i = 15; i > 0; i--) { Serial.printf("[LATCH] %ds\n", i); delay(1000); }
   digitalWrite(LATCH_PIN, LOW);
@@ -396,22 +331,32 @@ void checkButton() {
 }
 
 // ── SERIAL HANDLER ─────────────────────────────────────────
+// Non-blocking line reader with a persistent buffer:
+//  · processes EVERY complete line (no commands ever discarded)
+//  · drops non-printable noise bytes (floating RX line, Pi boot garbage)
+//  · never blocks the loop waiting for bytes
 void handleSerial() {
-  if (!PiSerial.available()) return;
-  char buf[96]; int len = 0;
-  unsigned long t = millis();
-  while (millis() - t < 30 && len < 95) {
-    if (PiSerial.available()) {
-      char c = PiSerial.read();
-      if (c == '\n') break;
-      buf[len++] = c;
-    }
-  }
-  buf[len]='\0';
-  if (len>0 && buf[len-1]=='\r') buf[--len]='\0';
-  if (len==0) return;
-  while (PiSerial.available()) PiSerial.read();
+  static char buf[96];
+  static int  len = 0;
 
+  while (PiSerial.available()) {
+    char c = PiSerial.read();
+
+    if (c == '\n' || c == '\r') {          // end of line → process it
+      if (len > 0) {
+        buf[len] = '\0';
+        processCommand(buf);
+        len = 0;
+      }
+      continue;
+    }
+    if (c < 32 || c > 126) continue;       // drop noise / non-printable
+    if (len < 95) buf[len++] = c;
+    else len = 0;                          // overflow → discard garbage line
+  }
+}
+
+void processCommand(char* buf) {
   Serial.print("[CMD] "); Serial.println(buf);
 
   if (strncmp(buf,"MOVE:",5)==0) { lastCmdTime=millis(); executeMove(buf+5); }
@@ -419,11 +364,7 @@ void handleSerial() {
     motorSpeed = appSpeedToPWM(atoi(buf+6));
     if (robotMoving) executeMove(currentDir);
   }
-  else if (strncmp(buf,"TOPSPEED:",9)==0) {
-    int v = constrain(atoi(buf+9),0,100);
-    if (homingActive) preHomeSpeed = v;   // apply after homing finishes
-    else servoSpeed = v;
-  }
+  else if (strncmp(buf,"TOPSPEED:",9)==0) servoSpeed = constrain(atoi(buf+9),0,100);
   else if (strncmp(buf,"HOME",4)==0) homeServos();
   else if (strcmp(buf,"RESUME")==0) executeMove(savedDir);
   else if (strncmp(buf,"POS:",4)==0) {
@@ -438,7 +379,7 @@ void handleSerial() {
     if (shutdownTriggered) return;
     shutdownTriggered = true;
     Serial.println("[LATCH] Pi shutdown — 15s...");
-    stopMotors(); homeServosBlocking();     // park slowly at home before power-off
+    stopMotors(); homeServos();
     for (int i=15;i>0;i--){ Serial.println(i); delay(1000); }
     digitalWrite(LATCH_PIN, LOW);
   }
@@ -459,19 +400,16 @@ void setup() {
   delay(100);
   while (PiSerial.available()) PiSerial.read();
 
+  // TF-Luna on its own UART — nothing shared with the servos
+  LunaSerial.begin(115200, SERIAL_8N1, LUNA_RX_PIN, LUNA_TX_PIN);
+
+  // I2C: PCA9685 has the bus entirely to itself
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(100000);
 
   pca.begin();
   pca.setPWMFreq(SERVO_FREQ);
   Serial.println("[PCA] 9685 ready");
-
-  // Fill per-channel limits/home from the config block
-  for (int ch = 0; ch < NUM_CH; ch++) { chMin[ch]=0; chMax[ch]=180; chHome[ch]=90; }
-  chMin[CH_ELBOW_L]=ELBOW_L_MIN;  chMax[CH_ELBOW_L]=ELBOW_L_MAX;  chHome[CH_ELBOW_L]=ELBOW_L_HOME;
-  chMin[CH_ELBOW_R]=ELBOW_R_MIN;  chMax[CH_ELBOW_R]=ELBOW_R_MAX;  chHome[CH_ELBOW_R]=ELBOW_R_HOME;
-  chMin[CH_FINGER_L]=FING_L_MIN;  chMax[CH_FINGER_L]=FING_L_MAX;  chHome[CH_FINGER_L]=FING_L_HOME;
-  chMin[CH_FINGER_R]=FING_R_MIN;  chMax[CH_FINGER_R]=FING_R_MAX;  chHome[CH_FINGER_R]=FING_R_HOME;
 
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -497,7 +435,7 @@ void setup() {
   lastCmdTime = millis();
   motorSpeed = appSpeedToPWM(100);
   delay(200);
-  homeServosInstant();   // ← robot always boots into its home position
+  homeServos();
 
   Serial.println("[SYSTEM] Ben Pro Max ready");
   PiSerial.println("BenProMax ready.");
@@ -510,9 +448,6 @@ void loop() {
   readBattery();
   handleSerial();
   updateServos();
-
-  // When slow-homing finishes, restore the user's servo speed
-  if (homingActive && servosAtTarget()) finishHoming();
 
   if (millis() - lastCmdTime > 500 && robotMoving) stopMotors();
 
