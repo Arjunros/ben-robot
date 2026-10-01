@@ -108,9 +108,9 @@ const bool PCA_USED[NUM_CH] = {false,false,true,true,false,false,false,true,true
 
 // ── PER-JOINT TRAVEL + HOME (degrees) ──────────────────────
 //                         ch:  0    1   fL   fR    4    5    6   eL   eR
-float PCA_OUT_A[NUM_CH] = {  0,   0, 180,   0,   0,   0,   0,  90,  90};
-float PCA_OUT_B[NUM_CH] = {180, 180,   0, 180, 180, 180, 180,   0, 180};
-float PCA_HOME[NUM_CH]  = { 90,  90, 180,   0,  90,  90,  90,  90,  90};
+float PCA_OUT_A[NUM_CH] = {  0,   0, 180,   0,   0,   0,   0,  0,  90};
+float PCA_OUT_B[NUM_CH] = {180, 180,   0, 180, 180, 180, 180,   80, 20};
+float PCA_HOME[NUM_CH]  = { 90,  90, 180,   0,  90,  90,  90,  0,  90};
 
 // Direct GPIO servos — mirror-mounted laterals run opposite ways
 #define LAT_L_A    180.0f      // app 0
@@ -125,13 +125,39 @@ float PCA_HOME[NUM_CH]  = { 90,  90, 180,   0,  90,  90,  90,  90,  90};
 #define HEAD_B     135.0f
 #define HEAD_HOME   90.0f
 
-// ── MOTION SMOOTHNESS ──────────────────────────────────────
+/* ── MOTION SMOOTHNESS ──────────────────────────────────────────────────
+ * Speed is now expressed in DEGREES PER SECOND rather than as degrees per
+ * tick, because the tick figure hid what the numbers meant.
+ *
+ * The old model was  step = 0.4 + 3.6 * (speed/100)  degrees per 15ms tick:
+ *
+ *      speed   0  ->   27 deg/s
+ *      speed  18  ->   70 deg/s     <- this was "slow homing"
+ *      speed  50  ->  147 deg/s
+ *      speed 100  ->  267 deg/s
+ *
+ * Two problems followed. "Slow" homing at 70 deg/s is faster than Luna's
+ * NORMAL home of 45. And the top of the slider asks for more than a hobby
+ * servo can deliver — roughly 400 deg/s unloaded and far less under an arm's
+ * weight — so everything above about 60 looked identical and the top of the
+ * range did nothing visible.
+ *
+ * SERVO_DPS_MAX is deliberately inside what the hardware can actually do, so
+ * the whole slider has an effect.
+ */
 #define SERVO_TICK_MS      15
-#define STEP_MIN_DEG      0.4f
-#define STEP_MAX_DEG      4.0f
+#define SERVO_DPS_MIN     12.0f   // at app value 0
+#define SERVO_DPS_MAX    320.0f   // at app value 100
 #define ARRIVE_DEG        0.20f
-#define HOMING_SPEED        18
-#define HOME_TIMEOUT_MS   6000
+
+// Homing has its own speed, used by the app's HOME and by boot and shutdown.
+// A full-size arm swinging to home with nothing supporting it is violent,
+// and at shutdown the power is about to be cut.
+#define HOMING_DPS        40.0f
+// Scaled to the speed: at 40 deg/s a 180-degree joint needs 4.5 seconds, so
+// the old fixed 6000ms was uncomfortably tight and would abandon a long
+// sweep part way.
+#define HOME_TIMEOUT_MS  12000
 
 // ── MOTORS (BTN7960) ───────────────────────────────────────
 #define RPWM_L  35
@@ -153,8 +179,8 @@ float PCA_HOME[NUM_CH]  = { 90,  90, 180,   0,  90,  90,  90,  90,  90};
 HardwareSerial PiSerial(1);
 
 // ── TF-LUNA UART (UART2) ───────────────────────────────────
-#define LUNA_TX_PIN    10 //5
-#define LUNA_RX_PIN    11  //6
+#define LUNA_TX_PIN    5
+#define LUNA_RX_PIN    6
 HardwareSerial LunaSerial(2);
 
 // ── LATCH + BUTTON ─────────────────────────────────────────
@@ -209,6 +235,10 @@ float chCurrent[NUM_CH], chTarget[NUM_CH];
 float latCurrentL=LAT_L_HOME, latTargetL=LAT_L_HOME;
 float latCurrentR=LAT_R_HOME, latTargetR=LAT_R_HOME;
 float headCurrent=HEAD_HOME,  headTarget=HEAD_HOME;
+
+// Non-zero while homing: overrides servoSpeed so HOME is always gentle,
+// whatever speed the app last set. Cleared when every joint has arrived.
+float homingDps = 0.0f;
 
 float battPackV = 0;
 int   battPercent = 100;
@@ -359,8 +389,13 @@ void updateServos() {
   if (now - lastServoUpdate < SERVO_TICK_MS) return;
   lastServoUpdate = now;
 
-  float step = STEP_MIN_DEG +
-               (STEP_MAX_DEG - STEP_MIN_DEG) * (constrain(servoSpeed,0,100) / 100.0f);
+  // Degrees per second, converted to this tick's step. Homing overrides the
+  // app's speed so a HOME is gentle even if the slider was left at maximum.
+  float dps = (homingDps > 0.0f)
+            ? homingDps
+            : SERVO_DPS_MIN + (SERVO_DPS_MAX - SERVO_DPS_MIN)
+                              * (constrain(servoSpeed, 0, 100) / 100.0f);
+  float step = dps * (SERVO_TICK_MS / 1000.0f);
 
   for (int ch = 0; ch < NUM_CH; ch++) {
     if (!PCA_USED[ch]) continue;
@@ -369,6 +404,12 @@ void updateServos() {
   if (stepToward(latCurrentL, latTargetL, step)) writeLateralL(latCurrentL);
   if (stepToward(latCurrentR, latTargetR, step)) writeLateralR(latCurrentR);
   if (stepToward(headCurrent, headTarget, step)) writeHead(headCurrent);
+
+  // Homing finished? Hand the speed back to the app's setting.
+  if (homingDps > 0.0f && servosAtTarget()) {
+    homingDps = 0.0f;
+    Serial.println("[SERVO] home reached");
+  }
 }
 
 bool servosAtTarget() {
@@ -419,23 +460,32 @@ void setHomeTargets() {
 }
 
 void homeServos() {                     // app HOME button — glides
+  // Sets the override and returns immediately, so loop() keeps running and
+  // the serial link and the obstacle sensor stay live while the arm moves.
+  // The override clears itself in updateServos() on arrival.
   setHomeTargets();
-  Serial.println("[SERVO] homing (smooth)");
+  homingDps = HOMING_DPS;
+  Serial.printf("[SERVO] homing at %.0f deg/s\n", HOMING_DPS);
 }
 
-void homeServosSlow(const char* why) {  // boot / shutdown — slow, blocking
-  int saved = servoSpeed;
-  servoSpeed = HOMING_SPEED;
+void homeServosSlow(const char* why) {  // boot / shutdown — blocking
+  // Blocks as well as being slow, because at shutdown the power is about to
+  // be cut and a joint must not be left mid-travel.
+  //
+  // It no longer overwrites servoSpeed. Doing that meant an interrupted home
+  // — a timeout, a crash, a shutdown that did not complete — left the app's
+  // speed stuck at the homing value, and nothing said so.
   setHomeTargets();
-  Serial.printf("[SERVO] slow home (%s)...\n", why);
+  homingDps = HOMING_DPS;
+  Serial.printf("[SERVO] slow home (%s) at %.0f deg/s...\n", why, HOMING_DPS);
   unsigned long t0 = millis();
   while (millis() - t0 < HOME_TIMEOUT_MS) {
     updateServos();
     if (servosAtTarget()) break;
     delay(2);
   }
-  servoSpeed = saved;
-  Serial.println("[SERVO] HOMED");
+  homingDps = 0.0f;
+  Serial.printf("[SERVO] HOMED in %lums\n", millis() - t0);
 }
 
 // ── PART → TARGET ──────────────────────────────────────────
@@ -646,8 +696,28 @@ void processCommand(char* buf) {
     if (robotMoving) executeMove(currentDir);
   }
   else if (strncmp(buf,"TOPSPEED:",9)==0) {
-    servoSpeed = constrain(atoi(buf+9), 0, 100);
-    Serial.printf("[SPEED] servo %d%%\n", servoSpeed);
+    int raw = atoi(buf+9);
+    // The app may send 0-100 or 0-2000 depending on its age. Anything above
+    // 100 is treated as the 0-2000 scale and converted, so both work.
+    // Without this, a newer app sending 1500 was clamped to 100 and the
+    // whole slider sat at maximum.
+    servoSpeed = (raw > 100) ? constrain(raw * 100 / 2000, 0, 100)
+                             : constrain(raw, 0, 100);
+    float d = SERVO_DPS_MIN + (SERVO_DPS_MAX - SERVO_DPS_MIN)
+                              * (servoSpeed / 100.0f);
+    // Reports the ACTUAL degrees per second. "servo 50%" told you nothing
+    // about whether the command had any effect.
+    Serial.printf("[SPEED] servo %d (raw %d) = %.0f deg/s\n",
+                  servoSpeed, raw, d);
+  }
+  else if (strcmp(buf,"SPEED?")==0) {
+    float d = SERVO_DPS_MIN + (SERVO_DPS_MAX - SERVO_DPS_MIN)
+                              * (servoSpeed / 100.0f);
+    Serial.printf("[SPEED] servo %d%% = %.0f deg/s (range %.0f-%.0f), "
+                  "home %.0f deg/s%s\n",
+                  servoSpeed, d, SERVO_DPS_MIN, SERVO_DPS_MAX, HOMING_DPS,
+                  homingDps > 0 ? ", HOMING now" : "");
+    Serial.printf("[SPEED] base pwm %d/255\n", motorSpeed);
   }
   else if (strncmp(buf,"HOME",4)==0) homeServos();
   else if (strcmp(buf,"RESUME")==0) executeMove(savedDir);
@@ -811,7 +881,7 @@ void setup() {
                 "PCA %s)\n",
                 DEFAULT_BASE_SPEED, motorSpeed, servoSpeed,
                 pcaOk ? "ok" : "FAULT");
-  Serial.println("[SYSTEM] type PCATEST or I2CSCAN here to diagnose servos");
+  Serial.println("[SYSTEM] type PCATEST, I2CSCAN or SPEED? here");
   PiSerial.println("BenProMax ready.");
 }
 
